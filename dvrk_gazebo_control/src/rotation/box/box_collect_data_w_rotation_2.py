@@ -546,6 +546,7 @@ if __name__ == "__main__":
                     
                     # if args.data_category == "MP":              
                     if frame_count == 0:
+                        # Only record manipulation point position at the beginning of each trajectory
                         mp_mani_point = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_POS)[-3])
 
                     terminate_count += 1
@@ -580,7 +581,7 @@ if __name__ == "__main__":
                         partial_pcs = (pc_on_trajectory[j], pc_goal)
                         full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
 
-
+                        ### Record data for training DeformerNet.
                         data = {"full pcs": full_pcs, "partial pcs": partial_pcs, "pos": p, "rot": R, "twist": twist, \
                                 "mani_point": mani_point, "obj_name": args.obj_name}
                         with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
@@ -594,10 +595,10 @@ if __name__ == "__main__":
                             partial_pcs = (pc_init, pc_on_trajectory[j])
                             full_pcs = (full_pc_init, full_pc_on_trajectory[j])
 
-
-                            # data = {"full pcs": full_pcs, "partial pcs": partial_pcs, "mani_point": mp_mani_point["pose"], "obj_name": args.obj_name}
-                            # with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
-                            #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
+                            ### Record data for training manipulation point predictors.
+                            data = {"full pcs": full_pcs, "partial pcs": partial_pcs, "mani_point": mp_mani_point["pose"], "obj_name": args.obj_name}
+                            with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
+                                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
                             
 
                             print("mp_data_point_count:", mp_data_point_count)
