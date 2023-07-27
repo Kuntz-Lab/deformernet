@@ -1,0 +1,417 @@
+<?xml version="1.0" ?>
+<robot name="psm">
+  <link name="world"/>
+  <joint name="psm_rev_joint" type="revolute">
+    <parent link="world"/>
+    <child link="psm_base_link"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="1000" lower="-1.57" upper="1.57" velocity="10"/>
+  </joint>
+  <joint name="psm_yaw_joint" type="revolute">
+    <parent link="psm_base_link"/>
+    <child link="psm_yaw_link"/>
+    <origin rpy="-1.57079 -1.57079  3.14159" xyz="0  0  0"/>
+    <axis xyz="0  0 -1"/>
+    <limit effort="1000.0" lower="-1.605" upper="1.5994" velocity="10.0"/>
+  </joint>
+  <joint name="psm_pitch_back_joint" type="revolute">
+    <parent link="psm_yaw_link"/>
+    <child link="psm_pitch_back_link"/>
+    <origin rpy="-1.57079 -0.29072  0" xyz="0      0      0.0296"/>
+    <axis xyz="0  0  1"/>
+    <limit effort="1000.0" lower="-0.93556" upper="0.94249" velocity="10.0"/>
+  </joint>
+  <joint name="psm_pitch_bottom_joint" type="revolute">
+    <parent link="psm_pitch_back_link"/>
+    <child link="psm_pitch_bottom_link"/>
+    <origin rpy="0       0       1.86149" xyz="0.15  0    0"/>
+    <axis xyz="0  0  1"/>
+    <limit effort="1000.0" lower="-0.94249" upper="0.93556" velocity="10.0"/>
+    <mimic joint="psm_pitch_back_joint" multiplier="-1"/>
+  </joint>
+  <joint name="psm_pitch_end_joint" type="revolute">
+    <parent link="psm_pitch_bottom_link"/>
+    <child link="psm_pitch_end_link"/>
+    <origin rpy="0  0  0" xyz="0.42  0    0"/>
+    <axis xyz="0  0  1"/>
+    <limit effort="1000.0" lower="-0.93556" upper="0.94249" velocity="10.0"/>
+    <mimic joint="psm_pitch_back_joint" multiplier="1"/>
+  </joint>
+  <joint name="psm_main_insertion_joint" type="prismatic">
+    <parent link="psm_pitch_end_link"/>
+    <child link="psm_main_insertion_link"/>
+    <origin rpy="1.57079  0      -3.14158" xyz="0.03912 -0.25179  0"/>
+    <axis xyz="3.00000000e-05   0.00000000e+00   1.00000000e+00"/>
+    <limit effort="1000.0" lower="0.0" upper="0.24" velocity="1.0"/>
+  </joint>
+  <joint name="psm_tool_roll_joint" type="revolute">
+    <parent link="psm_main_insertion_link"/>
+    <child link="psm_tool_roll_link"/>
+    <origin rpy="0       0      -3.14159" xyz="0      0      0.4162"/>
+    <axis xyz="-3.00000000e-05   0.00000000e+00   1.00000000e+00"/>
+    <limit effort="1000.0" lower="-3.14159" upper="3.14159" velocity="10.0"/>
+  </joint>
+  <joint name="psm_tool_pitch_joint" type="revolute">
+    <parent link="psm_tool_roll_link"/>
+    <child link="psm_tool_pitch_link"/>
+    <origin rpy="-0.83162 -1.57079  2.40243" xyz="0  0  0"/>
+    <axis xyz="0  0 -1"/>
+    <limit effort="1000.0" lower="-1.5708" upper="1.5708" velocity="10.0"/>
+  </joint>
+  <joint name="psm_tool_yaw_joint" type="revolute">
+    <parent link="psm_tool_pitch_link"/>
+    <child link="psm_tool_yaw_link"/>
+    <origin rpy="-1.57079 -1.57079 -3.14159" xyz="0.0091  0      0"/>
+    <axis xyz="0  0  1"/>
+    <limit effort="1000.0" lower="-1.5708" upper="1.5708" velocity="10.0"/>
+  </joint>
+<!--  <joint name="psm_tool_gripper1_joint" type="revolute">-->
+<!--    <parent link="psm_tool_yaw_link"/>-->
+<!--    <child link="psm_tool_gripper1_link"/>-->
+<!--    <origin rpy="-3.00000000e-05   0.00000000e+00  -3.14157000e+00" xyz="0  0  0"/>-->
+<!--    <axis xyz="2.00000000e-05   0.00000000e+00  -1.00000000e+00"/>-->
+<!--    <limit effort="0.0" lower="0.0" upper="1.0" velocity="0.0"/>-->
+<!--    <mimic joint="psm_tool_gripper2_joint" multiplier="-1"/> -->
+<!--  </joint>-->
+<!--  <joint name="psm_tool_gripper2_joint" type="revolute">-->
+<!--    <parent link="psm_tool_yaw_link"/>-->
+<!--    <child link="psm_tool_gripper2_link"/>-->
+<!--    <origin rpy="-3.00000000e-05   0.00000000e+00  -3.14157000e+00" xyz="0  0  0"/>-->
+<!--    <axis xyz="0.00000000e+00  -2.00000000e-05   1.00000000e+00"/>-->
+<!--    <limit effort="0.0" lower="0.0" upper="1.0" velocity="0.0"/>-->
+<!--  </joint>-->
+  
+<!--  ================================================================================== -->
+<!--  <joint name="psm_pitch_top_joint" type="revolute">-->
+<!--    <parent link="psm_pitch_back_link"/>-->
+<!--    <child link="psm_pitch_top_link"/>-->
+<!--    <origin rpy="0       0       1.86149" xyz="0.18366  0.01412  0"/>-->
+<!--    <axis xyz="0  0  1"/>-->
+<!--    <limit effort="1000.0" lower="-0.94249" upper="0.93556" velocity="10.0"/>-->
+<!--    <mimic joint="psm_pitch_back_joint" multiplier="-1"/>-->
+<!--  </joint>-->
+<!--  <joint name="psm_pitch_front_joint" type="revolute">-->
+<!--    <parent link="psm_yaw_link"/>-->
+<!--    <child link="psm_pitch_front_link"/>-->
+<!--    <origin rpy="-1.57079 -0.29072  0" xyz="0      0     -0.0664"/>-->
+<!--    <axis xyz="0  0  1"/>-->
+<!--    <limit effort="1000.0" lower="-0.93556" upper="0.94249" velocity="10.0"/>-->
+<!--    <mimic joint="psm_pitch_back_joint" multiplier="1"/>-->
+<!--  </joint>-->
+<!--  <joint name="psm_pitch_front_bottom_joint" type="revolute">-->
+<!--    <parent link="psm_pitch_front_link"/>-->
+<!--    <child link="psm_pitch_bottom_link"/>-->
+<!--    <origin rpy="0       0       1.86149" xyz="0.15  0    0"/>-->
+<!--    <axis xyz="0  0  1"/>-->
+<!--    <limit effort="1000.0" lower="-0.93556" upper="0.94249" velocity="1.0"/>-->
+<!--    -->
+<!--  </joint>-->
+<!--  <joint name="psm_pitch_top_end_joint" type="revolute">-->
+<!--    <parent link="psm_pitch_top_link"/>-->
+<!--    <child link="psm_pitch_end_link"/>-->
+<!--    <origin rpy="0  0  0" xyz="0.51599  0       0"/>-->
+<!--    <axis xyz="0  0  1"/>-->
+<!--    <limit effort="1000.0" lower="-0.93556" upper="0.94249" velocity="1.0"/>-->
+<!--  </joint>-->
+
+<!--  ================================================================================== -->
+  <link name="psm_base_link">
+    <inertial>
+      <mass value="2.0161"/>
+      <origin rpy="0  0  0" xyz="0      -0.17016 -0.0856"/>
+      <inertia ixx="0.03342853" ixy="0.00942520" ixz="-0.00334012" iyy="0" iyz="0" izz="0.02897334"/>
+    </inertial>
+    <collision name="psm_base_link_collision">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/base_link.STL"/>
+      </geometry>
+    </collision>
+    <visual name="psm_base_link_visual">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/base_link.STL"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="psm_yaw_link">
+    <inertial>
+      <mass value="1.4705"/>
+      <origin rpy="0  0  0" xyz="-3.87600000e-02   7.00000000e-05   4.15900000e-02"/>
+      <inertia ixx="0.01814321" ixy="0.0000043" ixz="0.00000728" iyy="0.0157145" iyz="-0.00048589" izz="0.00824930"/>
+    </inertial>
+    <collision name="psm_yaw_link_collision">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/yaw_link.STL"/>
+      </geometry>
+    </collision>
+    <visual name="psm_yaw_link_visual">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/yaw_link.STL"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="psm_pitch_back_link">
+    <inertial>
+      <mass value="0.7"/>
+      <origin rpy="0  0  0" xyz="-1.16500000e-02  -3.62400000e-02   3.00000000e-05"/>
+      <inertia ixx="0.00202417" ixy="0.00047511" ixz="0.00000043" iyy="0.00564963" iyz="0.00000129" izz="0.00564716"/>
+    </inertial>
+    <collision name="psm_pitch_back_link_collision">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/pitch_back_link.STL"/>
+      </geometry>
+    </collision>
+    <visual name="psm_pitch_back_link_visual">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/pitch_back_link.STL"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="psm_pitch_bottom_link">
+    <inertial>
+      <mass value="0.44569"/>
+      <origin rpy="0  0  0" xyz="0.25683 -0.01034  0"/>
+      <inertia ixx="0.00045979" ixy="-0.00031801" ixz="0.00000003" iyy="0.01127103" iyz="-0.00000040" izz="0.01110239"/>
+    </inertial>
+    <collision name="psm_pitch_bottom_link_collision">
+      <origin rpy="0  0  0" xyz="-0.096  0     0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/pitch_bottom_link.STL"/>
+      </geometry>
+    </collision>
+    <visual name="psm_pitch_bottom_link_visual">
+      <origin rpy="0  0  0" xyz="-0.096  0     0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/pitch_bottom_link.STL"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="psm_pitch_end_link">
+    <inertial>
+      <mass value="0.355"/>
+      <origin rpy="0  0  0" xyz="-0.00192 -0.13613  0"/>
+      <inertia ixx="0.03784466" ixy="-0.00123970" ixz="0.00000002" iyy="0.00156905" iyz="0" izz="0.03227453"/>
+    </inertial>
+    <collision name="psm_pitch_end_link_collision">
+      <origin rpy="0  0  0" xyz="-0.00388  0.03629  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/pitch_end_link.STL"/>
+      </geometry>
+    </collision>
+    <visual name="psm_pitch_end_link_visual">
+      <origin rpy="0  0  0" xyz="-0.00388  0.03629  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/pitch_end_link.STL"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="psm_main_insertion_link">
+    <inertial>
+      <mass value="0.22491"/>
+      <origin rpy="0  0  0" xyz="0.00405 -0.0001   0.00986"/>
+      <inertia ixx="0.01" ixy="-0.00001" ixz="0.00001" iyy="0.001" iyz="0.00001" izz="0.001"/>
+    </inertial>
+    <collision name="psm_main_insertion_link_collision">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/main_insertion_link.STL"/>
+      </geometry>
+    </collision>
+    <visual name="psm_main_insertion_link_visual">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/main_insertion_link.STL"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="psm_tool_roll_link">
+    <inertial>
+      <mass value="0.012491"/>
+      <origin rpy="0  0  0" xyz="0       0      -0.00582"/>
+      <inertia ixx="0.001" ixy="0.00001" ixz="0.00001" iyy="0.001" iyz="0.00001" izz="0.001"/>
+    </inertial>
+    <collision name="psm_tool_roll_link_collision">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/tool_roll_link.STL" scale="1 1 1"/>
+      </geometry>
+    </collision>
+    <visual name="psm_tool_roll_link_visual">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/tool_roll_link.STL" scale="1 1 1"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="psm_tool_pitch_link">
+    <inertial>
+      <mass value="0.012491"/>
+      <origin rpy="0  0  0" xyz="0.00357  0       0"/>
+      <inertia ixx="0.001" ixy="0.00001" ixz="0.00001" iyy="0.001" iyz="0.00001" izz="0.001"/>
+    </inertial>
+    <collision name="psm_tool_pitch_link_collision">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/tool_pitch_link.STL"/>
+      </geometry>
+    </collision>
+    <visual name="psm_tool_pitch_link_visual">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/tool_pitch_link.STL"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="psm_tool_yaw_link">
+    <inertial>
+      <mass value="0.012491"/>
+      <origin rpy="0  0  0" xyz="0.00000000e+00   0.00000000e+00  -5.00000000e-05"/>
+      <inertia ixx="0.001" ixy="0.00001" ixz="0.00001" iyy="0.001" iyz="0.00001" izz="0.001"/>
+    </inertial>
+    <collision name="psm_tool_yaw_link_collision">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/tool_yaw_link.STL"/>
+      </geometry>
+    </collision>
+    <visual name="psm_tool_yaw_link_visual">
+      <origin rpy="0  0  0" xyz="0  0  0"/>
+      <geometry>
+        <mesh filename="package://dvrk_description/psm/meshes/tool_yaw_link.STL"/>
+      </geometry>
+    </visual>
+  </link>
+<!--  <link name="psm_tool_gripper1_link">-->
+<!--    <inertial>-->
+<!--      <mass value="0.010491"/>-->
+<!--      <origin rpy="0  0  0" xyz="0.00019  0.00143 -0.00088"/>-->
+<!--      <inertia ixx="0.001" ixy="0.00001" ixz="0.00001" iyy="0.001" iyz="0.00001" izz="0.001"/>-->
+<!--    </inertial>-->
+<!--    <collision name="psm_tool_gripper1_link_collision">-->
+<!--      <origin rpy="0  0  0" xyz="0  0  0"/>-->
+<!--      <geometry>-->
+<!--        <mesh filename="package://dvrk_description/psm/meshes/tool_gripper1_link.STL"/>-->
+<!--      </geometry>-->
+<!--    </collision>-->
+<!--    <visual name="psm_tool_gripper1_link_visual">-->
+<!--      <origin rpy="0  0  0" xyz="0  0  0"/>-->
+<!--      <geometry>-->
+<!--        <mesh filename="package://dvrk_description/psm/meshes/tool_gripper1_link.STL" scale="1 1 1"/>-->
+<!--      </geometry>-->
+<!--    </visual>-->
+<!--  </link>-->
+<!--  <link name="psm_tool_gripper2_link">-->
+<!--    <inertial>-->
+<!--      <mass value="0.010491"/>-->
+<!--      <origin rpy="0  0  0" xyz="-0.00019  0.00143  0.00088"/>-->
+<!--      <inertia ixx="0.001" ixy="0.00001" ixz="0.00001" iyy="0.001" iyz="0.00001" izz="0.001"/>-->
+<!--    </inertial>-->
+<!--    <collision name="psm_tool_gripper2_link_collision">-->
+<!--      <origin rpy="0  0  0" xyz="0  0  0"/>-->
+<!--      <geometry>-->
+<!--        <mesh filename="package://dvrk_description/psm/meshes/tool_gripper2_link.STL"/>-->
+<!--      </geometry>-->
+<!--    </collision>-->
+<!--    <visual name="psm_tool_gripper2_link_visual">-->
+<!--      <origin rpy="0  0  0" xyz="0  0  0"/>-->
+<!--      <geometry>-->
+<!--        <mesh filename="package://dvrk_description/psm/meshes/tool_gripper2_link.STL" scale="1 1 1"/>-->
+<!--      </geometry>-->
+<!--    </visual>-->
+<!--  </link>-->
+  
+  
+  <!--  ================================================================================== -->
+<!--  <link name="psm_pitch_top_link">-->
+<!--    <inertial>-->
+
+<!--      <mass value="0.17841"/>-->
+<!--      <origin rpy="0  0  0" xyz="0.31246 -0.00056  0"/>-->
+<!--      <inertia ixx="0.00014989" ixy="0.00001128" ixz="0" iyy="0.00463460" iyz="0" izz="0.00449516"/>-->
+<!--    </inertial>-->
+<!--    <collision name="psm_pitch_top_link_collision">-->
+<!--      <origin rpy="0  0  0" xyz="0  0  0"/>-->
+<!--      <geometry>-->
+<!--        <mesh filename="package://dvrk_description/psm/meshes/pitch_top_link.STL"/>-->
+<!--      </geometry>-->
+<!--    </collision>-->
+<!--    <visual name="psm_pitch_top_link_visual">-->
+<!--      <origin rpy="0  0  0" xyz="0  0  0"/>-->
+<!--      <geometry>-->
+<!--        <mesh filename="package://dvrk_description/psm/meshes/pitch_top_link.STL"/>-->
+<!--      </geometry>-->
+<!--    </visual>-->
+<!--  </link>-->
+<!--  <link name="psm_pitch_front_link">-->
+<!--    <inertial>-->
+
+<!--      <mass value="0.074425"/>-->
+<!--      <origin rpy="0  0  0" xyz="0.09626  0       0.04755"/>-->
+<!--      <inertia ixx="0.00000876" ixy="0" ixz="-0.00001711" iyy="0.00022654" iyz="0" izz="00.00022322"/>-->
+<!--    </inertial>-->
+<!--    <collision name="psm_pitch_front_link_collision">-->
+<!--      <origin rpy="0  0  0" xyz="0  0  0"/>-->
+<!--      <geometry>-->
+<!--        <mesh filename="package://dvrk_description/psm/meshes/pitch_front_link.STL"/>-->
+<!--      </geometry>-->
+<!--    </collision>-->
+<!--    <visual name="psm_pitch_front_link_visual">-->
+<!--      <origin rpy="0  0  0" xyz="0  0  0"/>-->
+<!--      <geometry>-->
+<!--        <mesh filename="package://dvrk_description/psm/meshes/pitch_front_link.STL"/>-->
+<!--      </geometry>-->
+<!--    </visual>-->
+<!--  </link>-->
+
+<!--  ================================================================================== -->
+  <gazebo>
+    <plugin name="dvrk_plugin" filename="libdvrk_plugin.so">
+    </plugin>
+  </gazebo>
+  
+<!--  <gazebo reference="psm_yaw_link">-->
+<!--    <gravity>0</gravity>-->
+<!--    <turnGravityOff>true</turnGravityOff>-->
+<!--  </gazebo>-->
+<!--  -->
+<!--   <gazebo reference="psm_pitch_back_link">-->
+<!--    <gravity>0</gravity>-->
+<!--    <turnGravityOff>true</turnGravityOff>-->
+<!--  </gazebo>-->
+<!--  -->
+<!--   <gazebo reference="psm_pitch_bottom_link">-->
+<!--    <gravity>0</gravity>-->
+<!--    <turnGravityOff>true</turnGravityOff>-->
+<!--  </gazebo>  -->
+<!--  -->
+<!--   <gazebo reference="psm_pitch_bottom_link">-->
+<!--    <gravity>0</gravity>-->
+<!--    <turnGravityOff>true</turnGravityOff>-->
+<!--  </gazebo>    -->
+<!--  -->
+<!--   <gazebo reference="psm_pitch_end_link">-->
+<!--    <gravity>0</gravity>-->
+<!--    <turnGravityOff>true</turnGravityOff>-->
+<!--  </gazebo>    -->
+<!--  -->
+<!--   <gazebo reference="psm_main_insertion_link">-->
+<!--    <gravity>0</gravity>-->
+<!--    <turnGravityOff>true</turnGravityOff>-->
+<!--  </gazebo>  -->
+<!--  -->
+<!--   <gazebo reference="psm_pitch_top_link">-->
+<!--    <gravity>0</gravity>-->
+<!--    <turnGravityOff>true</turnGravityOff>-->
+<!--  </gazebo>  -->
+<!--  -->
+<!--   <gazebo reference="psm_pitch_front_link">-->
+<!--    <gravity>0</gravity>-->
+<!--    <turnGravityOff>true</turnGravityOff>-->
+<!--  </gazebo>  -->
+</robot>

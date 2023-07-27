@@ -1,0 +1,8 @@
+<launch>
+    <param name="box_description" command="$(find xacro)/xacro.py '$(find dvrk_description)/psm/box.urdf'"/>
+    <!-- <node name="box_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" args="robot_description:=box_description" /> -->
+    <node name="spawn_object" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-param box_description -urdf -model box -x 0 -y 0.486 -z 0.0"/>
+
+
+
+</launch>

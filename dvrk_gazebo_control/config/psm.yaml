@@ -1,0 +1,138 @@
+# dvrk:
+#   psm1:
+#     psm_yaw_joint_controller:
+#       p: 800
+#       i: 0.1
+#       d: 10
+#     psm_pitch_back_joint_controller:
+#       p: 800
+#       i: 0.1
+#       d: 30
+#     psm_main_insertion_joint_controller:
+#       p: 600
+#       i: 0.01
+#       d: 10
+#     psm_tool_roll_joint_controller:
+#       p: 10
+#       i: 0.1
+#       d: 1
+#     psm_tool_pitch_joint_controller:
+#       p: 10
+#       i: 0.1
+#       d: 1
+#     psm_tool_yaw_joint_controller:
+#       p: 10
+#       i: 0.1
+#       d: 1
+#     psm_tool_gripper1_joint_controller:non-chain
+#       d: 1
+#     psm_tool_gripper2_joint_controller:
+#       p: 100
+#       i: 0.1
+#       d: 1
+
+dvrk:
+  psm1:
+    yaw_joint_controller:
+      p: 800
+      i: 0.1
+      d: 10
+    pitch_back_joint_controller:
+      p: 800
+      i: 0.1
+      d: 30
+    main_insertion_joint_controller:
+      p: 600
+      i: 0.01
+      d: 10
+    tool_roll_joint_controller:
+      p: 10
+      i: 0.1
+      d: 1
+    tool_pitch_joint_controller:
+      p: 10
+      i: 0.1
+      d: 1
+    tool_yaw_joint_controller:
+      p: 10
+      i: 0.1
+      d: 1
+    tool_gripper1_joint_controller:
+      p: 100
+      i: 0.1
+      d: 1
+    tool_gripper2_joint_controller:
+      p: 300
+      i: 0.1
+      d: 1    
+    # tool_gripper1_joint_controller:
+    #   p: 800
+    #   i: 0.1
+    #   d: 10
+    # tool_gripper2_joint_controller:
+    #   p: 800
+    #   i: 0.1
+    #   d: 10        
+    # pitch_bottom_joint_controller:
+    #   p: 300
+    #   i: 0.1
+    #   d: 1     
+    # pitch_end_joint_controller:
+    #   p: 300
+    #   i: 0.1
+    #   d: 1
+    # pitch_front_bottom_joint_controller:
+    #   p: 300
+    #   i: 0.1
+    #   d: 1
+    # pitch_front_joint_controller:
+    #   p: 300
+    #   i: 0.1
+    #   d: 1 
+    # pitch_top_end_joint:
+    #   p: 300
+    #   i: 0.1
+    #   d: 1 
+    # pitch_top_joint_controller:
+    #   p: 300
+    #   i: 0.1
+    #   d: 10
+    # pitch_top_end_joint_controller:
+    #   p: 300
+    #   i: 0.1
+    #   d: 1  
+
+# dvrk:
+#   # psm1:
+#     psm__yaw_joint_controller:
+#       p: 800
+#       i: 0.1
+#       d: 10
+#     psm__pitch_back_joint_controller:
+#       p: 800
+#       i: 0.1
+#       d: 30
+#     psm__main_insertion_joint_controller:
+#       p: 600
+#       i: 0.01
+#       d: 10
+#     psm__tool_roll_joint_controller:
+#       p: 10
+#       i: 0.1
+#       d: 1
+#     psm__tool_pitch_joint_controller:
+#       p: 10
+#       i: 0.1
+#       d: 1
+#     psm__tool_yaw_joint_controller:
+#       p: 10
+#       i: 0.1
+#       d: 1
+#     psm__tool_gripper1_joint_controller:
+#       p: 100
+#       i: 0.1
+#       d: 1
+#     psm__tool_gripper2_joint_controller:
+#       p: 100
+#       i: 0.1
+#       d: 1

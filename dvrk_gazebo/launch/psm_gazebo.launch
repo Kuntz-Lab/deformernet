@@ -1,0 +1,64 @@
+<launch>
+  <arg name="end_effector"          default="none"/>
+  <arg name="arm_name"              default="lbr4"/>
+  <arg name="hand_name"             default="allegro_hand_right"/>
+  <arg name="controller"            default="joint_pd"/>
+  <arg name="control_rate"          default="100"/>
+  <arg name="state_rate"            default="1000"/>
+  <arg name="world_launch_file"     default="empty_world_dart.launch"/>
+
+
+  <arg name="ft_sensor"             default="true"/>
+  <arg name="biotac"                default="true"/>
+  <arg name="asus_xtion"            default="false"/>
+
+  <arg name="gazebo_tf"             default="false"/>
+  <arg name="robot_table"           default="true"/>
+  <arg name="robot_state_publisher" default="true"/>
+  
+  <arg name="jnt_state_topic"       default="joint_states"/>
+  <arg name="jnt_des_topic"         default="joint_cmd"/>
+  <arg name="task_des_topic"        default="task_cmd"/>
+  <arg name="jnt_cmd_topic"         default="joint_torque_cmd"/>
+  <arg name="robot_state_topic"     default="robot_state"/>
+
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find dvrk_gazebo)/worlds/dvrk.world"/>
+    <arg name="debug" value="$(arg debug)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="headless" value="$(arg headless)"/>
+    <arg name="verbose" value="true" />
+  </include>
+
+
+
+<rosparam file="$(find dvrk_gazebo_control)/config/psm.yaml" command="load"/>
+
+<param name="robot_description_sdf" command="$(find xacro)/xacro.py '$(find dvrk_description)/psm/psm_launch.sdf'"/>
+
+<!-- <param name="robot_description" command="$(find xacro)/xacro.py '$(find dvrk_description)/psm/psm_launch.urdf.xacro'"/> -->
+<!-- <param name="robot_description" command="$(find xacro)/xacro.py '$(find dvrk_description)/psm/psm_from_WPI_testgravity.urdf'"/> -->
+<param name="robot_description" command="$(find xacro)/xacro.py '$(find dvrk_description)/psm/new_psm.urdf'"/>
+
+<node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+args="-sdf -model dvrk -param robot_description_sdf"/>
+
+
+
+<group if="$(arg robot_state_publisher)">
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+          respawn="false" output="screen">
+      <param name="publish_frequency" value="$(arg state_rate)"/>
+      <remap from="/joint_states" to="/dvrk/joint/states" />
+    </node>
+</group> 
+
+</launch>

@@ -1,0 +1,11 @@
+moveit_setup_assistant_config:
+  URDF:
+    package: dvrk_description
+    relative_path: psm/psm_for_issacgym.urdf
+    xacro_args: ""
+  SRDF:
+    relative_path: config/psm.srdf
+  CONFIG:
+    author_name: Bao Thach
+    author_email: yuan.truyenbao@gmail.com
+    generated_timestamp: 1613369451

@@ -1,0 +1,19 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "",
+        "limitSymbolsToIncludedHeaders": true
+      },
+      "includePath": [
+        "/home/baothach/dvrk_shape_servo/devel/include/**",
+        "/opt/ros/melodic/include/**",
+        "/home/baothach/dvrk_shape_servo/src/dvrk_env/dvrk_gazebo/include/**",
+        "/home/baothach/dvrk_shape_servo/src/dvrk_env/dvrk_gazebo_control/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS"
+    }
+  ],
+  "version": 4
+}

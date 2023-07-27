@@ -1,0 +1,10 @@
+GraspObject obj
+#sampling method for experiments
+bool sample
+bool non_random
+float64[] others # other stuff to send to server
+---
+geometry_msgs/PoseStamped object_pose
+geometry_msgs/PoseStamped[] palm_goal_pose_world
+sensor_msgs/JointState[] allegro_joint_state
+bool[] is_top_grasp

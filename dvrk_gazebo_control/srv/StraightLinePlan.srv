@@ -1,0 +1,5 @@
+float64 lift_height 
+float64[] current_joint_states    # including all 10 joints
+---
+trajectory_msgs/JointTrajectory plan_traj
+bool success

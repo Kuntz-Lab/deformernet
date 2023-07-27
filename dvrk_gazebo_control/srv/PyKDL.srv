@@ -1,0 +1,6 @@
+float64[] q_cur    # current 8 joints' positions of the arm
+---
+int32[] jacobian_shape    # shape of jacobian matrix
+float64[] jacobian_flattened    # flattened jacobian matrix
+float64[] ee_pose_flattened     # flattened end effector pose
+

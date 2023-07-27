@@ -1,0 +1,10 @@
+bool go_home
+bool go_zero
+bool go_to_joint_goal 
+bool go_to_cartesian_goal
+float64[] current_joint_states    # including all 10 joints
+float64[] joint_goal    # 1) goal in joint space; 2) only 8 first joints, not including gripper joint
+geometry_msgs/Pose palm_goal_pose_world     # goal in Cartesian space
+---
+bool success
+trajectory_msgs/JointTrajectory plan_traj
