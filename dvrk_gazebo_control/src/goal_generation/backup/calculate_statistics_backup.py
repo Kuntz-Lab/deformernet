@@ -14,30 +14,32 @@ def pcd_ize(pc):
     return pcd
 
 ### Statistics
-data_recording_path = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap_multi_objects/evaluate/pointconv_100"
-# data_recording_path = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap_multi_objects/evaluate/randomized/pointconv_10_random_0"
+data_recording_path = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap/evaluate/run1"
+
 
 intersection_percents = []
 distances = []
 
-for i in range(0, 100):
+for i in range(0, 60):
 
     
-    if i % 10 == 0:
+    if i % 1 == 0:
         print(f"Current index: {i}")
     
     save_path = os.path.join(data_recording_path, f"sample {i}.pickle")
-    if not os.path.isfile(save_path):
-        continue
     with open(save_path, 'rb') as handle:
         data = pickle.load(handle)   
 
+    final_pc = data["final_full_pc"]    
 
-    percent = data["final_percent"]
+    percent = compute_intersection_percent(final_pc, data["tri_indices"], cylinder_shift=data["cylinder_shift"], vis = False)
     intersection_percents.append(percent)
 
-# with open(os.path.join(data_recording_path, "saved_percents.pickle"), 'wb') as handle:
-#     pickle.dump(intersection_percents, handle, protocol=pickle.HIGHEST_PROTOCOL)  
+    print(f"Percent intersect: {percent*100} %")
+    print("========================================")
+
+with open(os.path.join(data_recording_path, "saved_percents.pickle"), 'wb') as handle:
+    pickle.dump(intersection_percents, handle, protocol=pickle.HIGHEST_PROTOCOL)  
 
 
 print("average intersection percent:", np.mean(intersection_percents)*100)

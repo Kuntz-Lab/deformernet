@@ -317,8 +317,8 @@ class GenGraspPreshape():
             # w_prime = 0   # dynamics cylinder
             # h_prime = np.random.uniform(low = 0 , high = obj.height/2*0.8) 
 
-            w_prime = obj.width/2 * 0.6
-            h_prime = obj.height/2 * 0.6 
+            w_prime = 0#obj.width/2 * 0.6
+            h_prime = obj.height/2 * 0.8 
 
             # w_prime = np.random.uniform(low = -obj.width/2*0.7 , high = obj.width/2*0.7) # evaluate bimanual hemis
             # h_prime = np.random.uniform(low = obj.height/2*0.6 , high = obj.height/2*0.7)  

@@ -34,6 +34,7 @@ def get_rays(cylinder_shift, num_rays=1024):
 # def compute_intersection_percent(ray_origins, ray_directions, ray_visualize, cylinder_mesh, backbone, cylinder_shift, vis = False):
 
 def compute_intersection_percent(final_full_pc, tri_indices, cylinder_shift, vis = False, num_rays=1024):
+    return None
     
     ray_origins, ray_directions, ray_visualize, cylinder_mesh = get_rays(cylinder_shift, num_rays)
 

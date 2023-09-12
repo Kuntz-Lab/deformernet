@@ -63,13 +63,13 @@ def compute_intersection_percent(final_full_pc, tri_indices, cylinder_shift, vis
     return len(index_ray)/ray_origins.shape[0]
 
 
-
-def record_data(init_full_pc, final_full_pc, tri_indices, cylinder_shift, save_path):
-    data = {"init_full_pc": init_full_pc, "final_full_pc": final_full_pc, "tri_indices": tri_indices,
+def record_eval_data(final_partial_pc, final_full_pc, tri_indices, cylinder_shift, save_path):
+    data = {"final_partial_pc": final_partial_pc, "final_full_pc": final_full_pc, "tri_indices": tri_indices,
             "cylinder_shift": cylinder_shift}    
     
     with open(save_path, 'wb') as handle:
         pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL) 
+        
         
 def pcd_ize(pc, color=None, vis=False):
     pcd = open3d.geometry.PointCloud()

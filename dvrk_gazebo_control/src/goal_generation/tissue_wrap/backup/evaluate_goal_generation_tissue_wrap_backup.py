@@ -39,14 +39,14 @@ from core import Robot
 from behaviors import MoveToPose, TaskVelocityControl, TaskVelocityControl2
 
 
+# sys.path.append('/home/baothach/shape_servo_DNN/bimanual')
+# # from pointcloud_recon_2 import PointNetShapeServo, PointNetShapeServo2
+# from bimanual_architecture import DeformerNetBimanual
 import torch
 import trimesh
 import transformations
-
-from utils.miscellaneous_utils import pcd_ize, read_pickle_data, write_pickle_data, print_color, down_sampling
-from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
-from tissue_wrap_utils.util_functions import compute_intersection_percent, record_eval_data
-
+from wrap_utils import *
+np.random.seed(2024)
 
 
 ROBOT_Z_OFFSET = 0.25
@@ -54,7 +54,8 @@ ROBOT_Z_OFFSET = 0.25
 # init_kuka_2 = 0.15
 two_robot_offset = 1.0#0.93#0.86
 
-
+sys.path.append('/home/baothach/shape_servo_DNN')
+from farthest_point_sampling import *
 
 def init():
     for i in range(num_envs):
@@ -77,26 +78,101 @@ def get_point_cloud():
     particle_state_tensor = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim)))
     point_cloud = particle_state_tensor.numpy()[:, :3]  
     
+    # pcd = open3d.geometry.PointCloud()
+    # pcd.points = open3d.utility.Vector3dVector(np.array(point_cloud))
+    # open3d.visualization.draw_geometries([pcd])     
+    # return list(point_cloud)
     return point_cloud.astype('float32')
 
 
-def get_tissue_partial_pc_multi_views(vis=False):
-    """ 
-    Compute tissue partial point cloud from more than 1 camera view. Currently, using 2 cameras.
-    """
-    goal_1 = get_partial_pointcloud_vectorized(gym, sim, envs[0], tissue_cam_handles[0], cam_props, 
-                                            segmentationId_dict, object_name="deformable", color=None, min_z=0.01, 
-                                            visualization=False, device="cpu")  
-    goal_2 = get_partial_pointcloud_vectorized(gym, sim, envs[0], tissue_cam_handles[1], cam_props, 
-                                            segmentationId_dict, object_name="deformable", color=None, min_z=0.01, 
-                                            visualization=False, device="cpu")                              
-    combined_goal_pc = np.concatenate((goal_1, goal_2), axis=0)
-    
-    if vis:
-        pcd_ize(combined_goal_pc, color=[0,0,0], vis=True)
-    
-    return combined_goal_pc  
+def get_partial_point_cloud(obj_name="deform_tube"):
 
+    """
+    Get partial point cloud of any object
+    """
+
+    # if obj_name == "deform_tube":
+    #     cam_handles = deform_tube_cam_handles
+    #     cam_width = deform_tube_cam_width
+    #     cam_height = deform_tube_cam_height
+    # elif obj_name == "rigid_cylinder":
+    #     cam_handles = rigid_cylinder_cam_handles
+    #     cam_width = rigid_cylinder_cam_width
+    #     cam_height = rigid_cylinder_cam_height
+
+    # Render all of the image sensors only when we need their output here
+    # rather than every frame.
+    gym.render_all_camera_sensors(sim)
+
+    points = []
+    print("Converting Depth images to point clouds. Have patience...")
+    
+    depth_buffer = gym.get_camera_image(sim, envs_obj[i], cam_handles[i], gymapi.IMAGE_DEPTH)
+    seg_buffer = gym.get_camera_image(sim, envs_obj[i], cam_handles[i], gymapi.IMAGE_SEGMENTATION)
+
+    # Get the camera view matrix and invert it to transform points from camera to world space   
+    vinv = np.linalg.inv(np.matrix(gym.get_camera_view_matrix(sim, envs_obj[i], cam_handles[0])))
+
+    # Get the camera projection matrix and get the necessary scaling
+    # coefficients for deprojection
+    proj = gym.get_camera_proj_matrix(sim, envs_obj[i], cam_handles[i])
+    fu = 2/proj[0, 0]
+    fv = 2/proj[1, 1]
+
+    # Ignore any points that don't belong to the object
+    if obj_name == "tissue":
+        depth_buffer[seg_buffer == 11] = -10001
+        depth_buffer[seg_buffer == 10] = -10001
+    elif obj_name == "cylinder":   
+        depth_buffer[seg_buffer != 10] = -10001 
+
+    # Compute point cloud
+    centerU = cam_width/2
+    centerV = cam_height/2
+    for k in range(cam_width):
+        for t in range(cam_height):
+            if depth_buffer[t, k] < -3:
+                continue
+
+            u = -(k-centerU)/(cam_width)  # image-space coordinate
+            v = (t-centerV)/(cam_height)  # image-space coordinate
+            d = depth_buffer[t, k]  # depth buffer value
+            X2 = [d*fu*u, d*fv*v, d, 1]  # deprojection vector
+            p2 = X2*vinv  # Inverse camera view to get world coordinates
+            # print("p2:", p2)
+            if p2[0, 2] > 0.01:
+                points.append([p2[0, 0], p2[0, 1], p2[0, 2]])
+
+    return np.array(points).astype('float32')
+
+def down_sampling(pc, num_pts=1024):
+    farthest_indices,_ = farthest_point_sampling(pc, num_pts)
+    pc = pc[farthest_indices.squeeze()]  
+    return pc
+
+def get_cylinder_goal_pc(radius, height, translation=None, num_points=1024, vis=False):
+    
+    rot_mat = transformations.euler_matrix(0, np.pi/2, 0)
+    
+    # # rot_mat = transformations.euler_matrix(np.pi/6, np.pi/2, 0)
+    translation = np.array(translation) + cylinder_shift  #np.array([0.03,-0.02,0.04])
+
+    if translation is not None:
+        # T = trimesh.transformations.translation_matrix(translation)
+        rot_mat[:3,3] = np.array(translation)
+    
+    # mesh = trimesh.creation.cylinder(radius=radius, height=height, transform=rot_mat)
+    mesh = trimesh.creation.annulus(r_min=radius-0.001, r_max=radius, height=height, transform=rot_mat)
+
+    
+    sampled_pts = trimesh.sample.sample_surface_even(mesh, count=1024)[0]
+
+    if vis:
+        pcd = open3d.geometry.PointCloud()
+        pcd.points = open3d.utility.Vector3dVector(sampled_pts)
+        open3d.visualization.draw_geometries([pcd]) 
+
+    return sampled_pts
 
 if __name__ == "__main__":
 
@@ -114,28 +190,34 @@ if __name__ == "__main__":
             {"name": "--obj_name", "type": str, "default": 'box_0', "help": "select variations of a primitive shape"},
             {"name": "--obj_type", "type": str, "default": 'box_1k', "help": "box1k, box5k, etc."},
             {"name": "--inside", "type": str, "default": "True", "help": "inside train distribution"},
-            {"name": "--headless", "type": str, "default": "False", "help": "headless mode"},
-            {"name": "--eval_sample_idx", "type": int, "default": 10000, "help": "which evaluation sample to use. From 0 to 100"},
-            {"name": "--model_name", "type": str, "help": "which model to use. Options: pointconv_100, pointconv_1000, pointconv_10_random_0, etc."}])
+            {"name": "--headless", "type": str, "default": "False", "help": "headless mode"}])
 
     num_envs = args.num_envs
     args.headless = args.headless == "True"
     args.inside = args.inside == "True"
 
 
+    # chamfer_recording_path =  "/home/baothach/shape_servo_data/bimanual/multi_boxes_1000Pa/evaluate/chamfer_results"
+    # data_point_count = len(os.listdir(chamfer_recording_path))
+    # rospy.logerr(f"goal count: {data_point_count}")
+    # goal_recording_path =  "/home/baothach/shape_servo_data/bimanual/multi_boxes_1000Pa/evaluate/goals"
+    # with open(os.path.join(goal_recording_path, "sample " + str(11) + ".pickle"), 'rb') as handle:
+    # # with open(os.path.join(goal_recording_path, "sample " + str(data_point_count) + ".pickle"), 'rb') as handle:    
+    #     data = pickle.load(handle)
+    #     args.obj_name = data["obj_name"]
 
     # configure sim
     sim_type = gymapi.SIM_FLEX
     sim_params = gymapi.SimParams()
     sim_params.up_axis = gymapi.UP_AXIS_Z
     # sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
-    sim_params.gravity = gymapi.Vec3(0.0, 0.0, 0.0)
+    sim_params.gravity = gymapi.Vec3(0.0, 0.0, 0)
     if sim_type is gymapi.SIM_FLEX:
         sim_params.substeps = 4
         # print("=================sim_params.dt:", sim_params.dt)
         sim_params.dt = 1./60.
         sim_params.flex.solver_type = 5
-        sim_params.flex.num_outer_iterations = 10   #4
+        sim_params.flex.num_outer_iterations = 4
         sim_params.flex.num_inner_iterations = 50
         sim_params.flex.relaxation = 0.7
         sim_params.flex.warm_start = 0.1
@@ -143,7 +225,6 @@ if __name__ == "__main__":
         sim_params.flex.contact_regularization = 1.0e-6
         sim_params.flex.shape_collision_margin = 1.0e-4
         sim_params.flex.deterministic_mode = True
-        
 
     sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, sim_params)
 
@@ -203,34 +284,22 @@ if __name__ == "__main__":
     print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
-    eval_data_path = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap_multi_objects/eval_data" 
-    eval_data = read_pickle_data(os.path.join(eval_data_path, f"sample {args.eval_sample_idx}.pickle"))
-    object_idx = eval_data["object_idx"]
-    cylinder_shift = eval_data["cylinder pose"]
-    gt_goal_pc = eval_data["partial pcs"][1]
-    pcd_gt_goal = pcd_ize(gt_goal_pc, color=[0,0,1])
+    # if args.inside:
+    #     asset_root = os.path.join(objects_path, "bimanual_urdf", args.obj_type, "inside")
+    # else:
+    #     asset_root = os.path.join(objects_path, "bimanual_urdf", args.obj_type, "outside") 
 
 
-    main_path = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap_multi_objects/objects_dataset_eval"    # FIX
-    cylinder_path = os.path.join(main_path, "cylinder/urdf")
-    tissue_path = os.path.join(main_path, "tissue/urdf")
-    cylinder_dict_path = os.path.join(main_path, "cylinder/specification")
-    tissue_dict_path = os.path.join(main_path, "tissue/specification")
-    
-    cylinder_dict = read_pickle_data(os.path.join(cylinder_dict_path, f"cylinder_{object_idx}.pickle"))
-    tissue_dict = read_pickle_data(os.path.join(tissue_dict_path, f"tissue_{object_idx}.pickle"))
-    cylinder_radius, cylinder_length = cylinder_dict["radius"], cylinder_dict["length"]
-    tissue_width, tissue_length, tissue_thickness = tissue_dict["width"], tissue_dict["length"], tissue_dict["thickness"]
-    print_color(f"\n******** Cylinder length: {cylinder_length}\n")
+    # soft_asset_file = args.obj_name + ".urdf"
 
-    asset_root = tissue_path
-    soft_asset_file = f"tissue_{object_idx}.urdf"
+    asset_root = "/home/baothach/sim_data/Custom/Custom_urdf"
+    soft_asset_file = 'thin_tissue_layer.urdf'
 
 
 
     soft_pose = gymapi.Transform()
     # soft_pose.p = gymapi.Vec3(0.0, -0.42, 0.01818)
-    soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, tissue_thickness)
+    soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, 0.01818)
     soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
     soft_thickness = 0.001#0.001   # important to add some thickness to the soft body to avoid interpenetrations
 
@@ -241,14 +310,48 @@ if __name__ == "__main__":
 
     soft_asset = gym.load_asset(sim, asset_root, soft_asset_file, asset_options)
     
-    cylinder_asset_root = cylinder_path
-    cylinder_asset_file = f"cylinder_{object_idx}.urdf"   #trimesh.creation.cylinder(radius=0.015, height=0.1)      
+    cylinder_asset_root = "/home/baothach/sim_data/Custom/Custom_urdf/multi_cylinders"
+    cylinder_asset_file = "cylinder_wrap_tissue.urdf"   #trimesh.creation.cylinder(radius=0.015, height=0.1)      
     cylinder_pose = gymapi.Transform()
-   
-    cylinder_pose.p = gymapi.Vec3(cylinder_shift[0], -two_robot_offset/2+cylinder_shift[1], cylinder_shift[2]+0.04) 
-    cylinder_pose.r = gymapi.Quat(0.5,0.5,0.5,0.5)
+    # cylinder_pose.p = gymapi.Vec3(0.01, -two_robot_offset/2+0.01, 0.04)
+    # cylinder_pose.p = gymapi.Vec3(0.00, -two_robot_offset/2+0.00, 0.04)
+
+
+    cylinder_shift = np.array([-0.03,0.03,0.03])  #np.array([0.06,-0.02,0.03])
+    # shift_x = np.random.uniform(low = -0.05, high = 0.05, size=1) 
+    # shift_y = np.random.uniform(low = -0.05, high = 0.05, size=1) 
+    # shift_z = np.random.uniform(low = 0, high = 0.05, size=1) 
+    # cylinder_shift = np.concatenate((shift_x, shift_y, shift_z))
+    print("****cylinder_shift:", cylinder_shift)
     
+    data_recording_path = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap/evaluate/run1"
+    os.makedirs(data_recording_path, exist_ok=True)
+    data_point_count = len(os.listdir(data_recording_path))
+    
+    # num_shifts = 35
+    # # shift_x = np.random.uniform(low = -0.05, high = 0.05, size=(num_shifts,1)) 
+    # shift_x = np.random.uniform(low = -0.00005, high = 0.00005, size=(num_shifts,1))
+    # shift_y = np.random.uniform(low = -0.05, high = 0.05, size=(num_shifts,1)) 
+    # shift_z = np.random.uniform(low = 0, high = 0.05, size=(num_shifts,1))  
+    # all_shifts = np.column_stack((shift_x, shift_y, shift_z))
+    # cylinder_shift = all_shifts[data_point_count]
+    # print("****cylinder_shift:", cylinder_shift)
+    # print("****all_shifts:", all_shifts.shape, all_shifts[:4])
+
+    
+    cylinder_pose.p = gymapi.Vec3(cylinder_shift[0], -two_robot_offset/2+cylinder_shift[1], cylinder_shift[2]+0.04) 
+    # cylinder_pose.p = gymapi.Vec3(cylinder_shift[0], -two_robot_offset/2+cylinder_shift[1], cylinder_shift[2])
+    cylinder_pose.r = gymapi.Quat(0.5,0.5,0.5,0.5)
+    # euler = [np.pi/2, 0, 0]
+    # cylinder_pose.r = gymapi.Quat(*euler)
+    
+    
+    # asset_options = gymapi.AssetOptions()
+    # asset_options.fix_base_link = False
+    # asset_options.thickness = 0.01
+    # asset_options.disable_gravity = False
     cylinder_asset = gym.load_asset(sim, cylinder_asset_root, cylinder_asset_file, asset_options)
+    
  
     
     # set up the env grid
@@ -276,13 +379,29 @@ if __name__ == "__main__":
         envs.append(env)
 
         # add kuka
-        kuka_handle = gym.create_actor(env, kuka_asset, pose, "kuka", i, 1, segmentationId=10)
+        kuka_handle = gym.create_actor(env, kuka_asset, pose, "kuka", i, 1, segmentationId=11)
 
         # add kuka2
         kuka_2_handle = gym.create_actor(env, kuka_asset, pose_2, "kuka2", i, 1, segmentationId=11)        
         
 
         # add soft obj    
+        
+              
+        # env_obj = env
+        
+        
+        # env_obj = gym.create_env(sim, env_lower, env_upper, num_per_row)
+        # envs_obj.append(env_obj)    
+        # soft_actor = gym.create_actor(env_obj, soft_asset, soft_pose, "soft", i, 0)         
+        
+        # object_handles.append(soft_actor)
+
+        # temp_env = gym.create_env(sim, env_lower, env_upper, num_per_row)
+        # cylinder_actor = gym.create_actor(temp_env, cylinder_asset, cylinder_pose, "cylinder", i+2, 1, segmentationId=11)
+        # color = gymapi.Vec3(1,0,0)
+        # gym.set_rigid_body_color(temp_env, cylinder_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+
         env_obj = env
         envs_obj.append(env_obj)    
         soft_actor = gym.create_actor(env_obj, soft_asset, soft_pose, "soft", i, 0)         
@@ -290,14 +409,13 @@ if __name__ == "__main__":
         object_handles.append(soft_actor)
 
         temp_env = env
-        cylinder_actor = gym.create_actor(temp_env, cylinder_asset, cylinder_pose, "cylinder", i, 1, segmentationId=12)
+        cylinder_actor = gym.create_actor(temp_env, cylinder_asset, cylinder_pose, "cylinder", i, 1, segmentationId=10)
         color = gymapi.Vec3(1,0,0)
         gym.set_rigid_body_color(temp_env, cylinder_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
 
         kuka_handles.append(kuka_handle)
         kuka_handles_2.append(kuka_2_handle)
-
 
 
 
@@ -321,7 +439,6 @@ if __name__ == "__main__":
         middle_env = envs[num_envs // 2 + num_per_row // 2]
         gym.viewer_camera_look_at(viewer, middle_env, cam_pos, cam_target)
 
-
     # Camera for point cloud setup
     cam_positions = []
     cam_targets = []
@@ -331,36 +448,21 @@ if __name__ == "__main__":
     cam_props = gymapi.CameraProperties()
     cam_props.width = cam_width
     cam_props.height = cam_height
+    # cam_positions.append(gymapi.Vec3(0.12, -0.55, 0.15))
+    # cam_positions.append(gymapi.Vec3(0.1, -0.5-(two_robot_offset/2 - 0.42), 0.2))
+    # cam_targets.append(gymapi.Vec3(0.0, -0.45-(two_robot_offset/2 - 0.42), 0.00))
 
+    # cam_positions.append(gymapi.Vec3(0.17, -0.62, 0.2))
+    # cam_targets.append(gymapi.Vec3(0.0, 0.40-two_robot_offset, 0.01))
     cam_positions.append(gymapi.Vec3(0.17, -0.62-(two_robot_offset/2 - 0.42), 0.2))
     cam_targets.append(gymapi.Vec3(0.0, 0.40-0.86-(two_robot_offset/2 - 0.42), 0.01)) 
   
-    
+
     
     for i, env_obj in enumerate(envs_obj):
             cam_handles.append(gym.create_camera_sensor(env_obj, cam_props))
             gym.set_camera_location(cam_handles[i], env_obj, cam_positions[0], cam_targets[0])
-
-
-    tissue_cam_positions = []
-    tissue_cam_targets = []
-    tissue_cam_handles = []
-    tissue_cam_width = 256
-    tissue_cam_height = 256
-    tissue_cam_props = gymapi.CameraProperties()
-    tissue_cam_props.width = tissue_cam_width
-    tissue_cam_props.height = tissue_cam_height
-   
-    tissue_cam_positions.append(gymapi.Vec3(0.3, -two_robot_offset/2 - 0.3, 0.1))
-    tissue_cam_targets.append(gymapi.Vec3(0, -two_robot_offset/2, 0.01))    
-
-    tissue_cam_positions.append(gymapi.Vec3(-0.3, -two_robot_offset/2 + 0.3, 0.1))
-    tissue_cam_targets.append(gymapi.Vec3(0, -two_robot_offset/2, 0.01))    
-
-   
-    for j in range(len(tissue_cam_positions)):
-            tissue_cam_handles.append(gym.create_camera_sensor(env_obj, tissue_cam_props))
-            gym.set_camera_location(tissue_cam_handles[j], env_obj, tissue_cam_positions[j], tissue_cam_targets[j])
+    print("============cam_handle:", cam_handles[0])
 
 
 
@@ -384,20 +486,24 @@ if __name__ == "__main__":
     state = "home"
     
 
-    data_recording_path = f"/home/baothach/shape_servo_data/goal_generation/tissue_wrap_multi_objects/evaluate/{args.model_name}"
-    os.makedirs(data_recording_path, exist_ok=True)
+    # goal_recording_path = "/home/baothach/shape_servo_data/comparison/RRT/goal_data"
+    # goal_point_count = 0
+
+    # data_recording_path = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap/evaluate/run1"
+    # os.makedirs(data_recording_path, exist_ok=True)
     terminate_count = 0
     sample_count = 0
     frame_count = 0
     group_count = 0
-    save_path = os.path.join(data_recording_path, f"sample {args.eval_sample_idx}.pickle")
+    # data_point_count = len(os.listdir(data_recording_path))
+    save_path = os.path.join(data_recording_path, f"sample {data_point_count}.pickle")
     max_group_count = 150000
     max_sample_count = 1
     max_data_point_count = 10000
     iter_count = 0
     random_count_2 = 0
     percent = 0.0
-
+    # min_chamfer_dist = 0.2
 
 
 
@@ -415,14 +521,21 @@ if __name__ == "__main__":
     min_chamfer_dist = 0.2
     fail_mtp = False
     saved_chamfers = []
-    segmentationId_dict = {"robot_1": 10, "robot_2": 11, "cylinder": 12}
 
     dc_client = GraspDataCollectionClient()
     
+    # # Set up DNN:
+    # device = torch.device("cuda")  
+    # sys.path.append(f"/home/baothach/shape_servo_DNN/bimanual")
+    # from bimanual_architecture import DeformerNetBimanualRot
+    # model = DeformerNetBimanualRot(normal_channel=False).to(device)
+    # weight_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/multi_box_1kPa/weights/run2/"
+    # model.load_state_dict(torch.load(os.path.join(weight_path, "epoch 160")))  
+    # model.eval()
 
     # Set up DNN:
     device = torch.device("cuda")
-    use_rot = True#False
+    use_rot = False
     
     if not use_rot:
         sys.path.append('/home/baothach/shape_servo_DNN/bimanual')
@@ -441,20 +554,27 @@ if __name__ == "__main__":
         # model.load_state_dict(torch.load(os.path.join(weight_path, "epoch 200")))  
         model.eval()
 
-    sys.path.append(f"/home/baothach/shape_servo_data/tanner/goal_generation_net")
-    from pointconv_model_bao import GoalGenNet
-    goal_model = GoalGenNet(num_points=512, embedding_size=256).to(device)
-    weight_path = f"/home/baothach/shape_servo_data/goal_generation/tissue_wrap_multi_objects/weights/{args.model_name}"
-    goal_model.load_state_dict(torch.load(f"{weight_path}/epoch 2000"))
-
+    sys.path.append(f"/home/baothach/goal_generation_net/tissue_wrap")
+    from model_tissue_wrap import TissueWrapNet
+    goal_model = TissueWrapNet(num_points=512, embedding_size=256).to(device)
+    goal_model.load_state_dict(torch.load("/home/baothach/shape_servo_data/goal_generation/tissue_wrap/weights/run1_6000/epoch 150"))
+    # goal_model.load_state_dict(torch.load("/home/baothach/shape_servo_data/goal_generation/tissue_wrap/weights/run1_old/epoch 150"))
     goal_model.eval()
 
-
+    # recorded_goal_path = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap"
+    # goal_pc_file_name = "goal_pc.pickle"
     use_record_goal = True
-    visualization = False   #True
+    # # goal_pc_numpy = get_cylinder_goal_pc(radius=(0.2*0.8)/(2*np.pi), height=0.15*0.8, translation=[0.00,-two_robot_offset/2, 1.0*0.04+0.01])
+    # with open(os.path.join(recorded_goal_path, goal_pc_file_name), 'rb') as handle:    
+    #     goal_pc_numpy = pickle.load(handle)
+
+    # goal_pc_tensor = torch.from_numpy(goal_pc_numpy).permute(1,0).unsqueeze(0).float().to(device)
+    # pcd_goal = open3d.geometry.PointCloud()
+    # pcd_goal.points = open3d.utility.Vector3dVector(goal_pc_numpy) 
+    goal_position = [0,0,0]
  
 
-    print_color(f"\n******** eval_sample_idx: {args.eval_sample_idx}\n")
+    
 
     
     start_time = timeit.default_timer()    
@@ -626,7 +746,17 @@ if __name__ == "__main__":
                 tvc_behavior_1 = TaskVelocityControl(robot_1_desired_pos, robot_1, sim_params.dt, 3, vel_limits=vel_limits, error_threshold = 2e-3, second_robot=False)
                 tvc_behavior_2 = TaskVelocityControl(robot_2_desired_pos, robot_2, sim_params.dt, 3, vel_limits=vel_limits, error_threshold = 2e-3)
 
-       
+                cylinder_pc = get_partial_point_cloud(obj_name="cylinder")
+                tissue_pc = get_partial_point_cloud(obj_name="tissue")
+                pc_tensor = torch.from_numpy(tissue_pc).permute(1,0).unsqueeze(0).float().to(device)
+                cylinder_pc_tensor = torch.from_numpy(cylinder_pc).permute(1,0).unsqueeze(0).float().to(device)
+                goal_pc_tensor = goal_model(pc_tensor, cylinder_pc_tensor)
+                
+                pcd_goal = pcd_ize(goal_pc_tensor.squeeze().cpu().detach().numpy().transpose(1,0), color=[1,0,0])
+                pcd_cylinder = pcd_ize(cylinder_pc, color=[0,1,0])   
+                pcd_tissue = pcd_ize(tissue_pc, color=[0,0,0])   
+                
+                open3d.visualization.draw_geometries([pcd_goal, pcd_tissue, pcd_cylinder])           
                 
             else:
 
@@ -634,13 +764,9 @@ if __name__ == "__main__":
                 
                 
                 rospy.logerr("Use DeformerNet")
-
-                current_pc = get_partial_pointcloud_vectorized(gym, sim, envs[0], cam_handles[0], cam_props, 
-                                    segmentationId_dict, object_name="deformable", color=None, min_z=0.01, 
-                                    visualization=False, device="cpu")     
-                current_pc = down_sampling(current_pc, num_pts=512)
-
-                        
+                # current_pc = down_sampling(get_point_cloud()) #down_sampling(get_partial_point_cloud(i))
+                current_pc = down_sampling(get_partial_point_cloud(obj_name="tissue"), num_pts=512)
+        
                 neigh = NearestNeighbors(n_neighbors=50)
                 neigh.fit(current_pc)
                 
@@ -653,23 +779,8 @@ if __name__ == "__main__":
                 mp_channel_2[nearest_idxs_2.flatten()] = 1 
 
                 modified_pc = np.vstack([current_pc.transpose(1,0), mp_channel_1, mp_channel_2])
-                
-                
-                shift_pc = cylinder_shift #+ np.array([0,0,0.04])
-                modified_pc = modified_pc.transpose(1,0)
-                modified_pc[:,:3] -= shift_pc
-                modified_pc = modified_pc.transpose(1,0)
-                goal_pc_tensor = torch.from_numpy(predicted_goal - shift_pc).permute(1,0).unsqueeze(0).float().to(device)   
-                # pcd_test = pcd_ize(modified_pc.transpose(1,0)[:,:3], color=[0,0,0])  
-                # pcd_test_goal = pcd_ize(goal_pc_tensor.squeeze().permute(1,0).detach().cpu().numpy(), color=[1,0,0])     
-                # coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)    
-                # coor.translate((0,-two_robot_offset/2,0))   
-                # open3d.visualization.draw_geometries([pcd_test, pcd_test_goal, coor])
-                
-                
-                
                 current_pc_tensor = torch.from_numpy(modified_pc).unsqueeze(0).float().to(device)
-
+                # assert modified_pc.shape == (5,1024)
             
                 pcd.points = open3d.utility.Vector3dVector(current_pc)
 
@@ -692,17 +803,12 @@ if __name__ == "__main__":
                         pos, rot_mat_1, rot_mat_2 = model(current_pc_tensor, goal_pc_tensor) 
                         pos *= 0.001
                         pos, rot_mat_1, rot_mat_2 = pos.detach().cpu().numpy(), rot_mat_1.detach().cpu().numpy(), rot_mat_2.detach().cpu().numpy()
-                        # desired_position = pos[0]
+                        desired_position = pos[0]
                         
                         # if iter_count == 0:
                         #     pos[0][2] = max(0.01, pos[0][2])
                         #     pos[0][5] = max(0.01, pos[0][5])
                         # #     iter_count += 1
-
-                        if args.model_name == "pointconv_1000":
-                            pos[0][2] = max(0.00, pos[0][2])
-                            pos[0][5] = max(0.00, pos[0][5])
-
                         
                         desired_pos_1 = (pos[0][:3] + init_pose_1[:3,3]).flatten()                    
                         desired_pos_2 = (pos[0][3:] + init_pose_2[:3,3]).flatten()
@@ -744,7 +850,6 @@ if __name__ == "__main__":
 
                     tvc_behavior_1 = TaskVelocityControl(robot_1_desired_pos, robot_1, sim_params.dt, 3, vel_limits=vel_limits, error_threshold = 2e-3, second_robot=False)
                     tvc_behavior_2 = TaskVelocityControl(robot_2_desired_pos, robot_2, sim_params.dt, 3, vel_limits=vel_limits, error_threshold = 2e-3)
-                
                 iter_count += 1
 
             closed_loop_start_time = deepcopy(gym.get_sim_time(sim))
@@ -763,6 +868,13 @@ if __name__ == "__main__":
                 if timeit.default_timer() - shapesrv_start_time >= max_shapesrv_time:
                     rospy.logerr("Timeout")
                     
+                    # final_full_pc = get_point_cloud()
+                    # (tri_indices, tri_parents, tri_normals) = gym.get_sim_triangles(sim)
+                    
+                    # record_data(init_full_pc, final_full_pc, tri_indices, cylinder_shift, save_path)
+                    
+                    # all_done = True
+
                     state = "reset" 
                     all_done = True
                 
@@ -780,34 +892,12 @@ if __name__ == "__main__":
                         
                         final_full_pc = get_point_cloud()
                         (tri_indices, tri_parents, tri_normals) = gym.get_sim_triangles(sim)
-                        if not move_to_centroid:
-                            percent = compute_intersection_percent(final_full_pc, tri_indices, cylinder_shift, 
-                                                                cylinder_radius, cylinder_length, vis = False)
-                            print_color(f"Percent intersect: {percent*100} %")
+                        percent = compute_intersection_percent(final_full_pc, tri_indices, cylinder_shift=cylinder_shift, vis = True)
+                        print(f"Percent intersect: {percent } %")
 
 
                         if move_to_centroid:
                             move_to_centroid = False
-                            cylinder_pc = get_partial_pointcloud_vectorized(gym, sim, envs[0], cam_handles[0], cam_props,
-                                        segmentationId_dict, object_name="cylinder", color=None, min_z=0.01, 
-                                        visualization=False, device="cpu")  
-                            
-                            tissue_pc = get_partial_pointcloud_vectorized(gym, sim, envs[0], cam_handles[0], cam_props, 
-                                                segmentationId_dict, object_name="deformable", color=None, min_z=0.01, 
-                                                visualization=False, device="cpu")                  
-                            
-                            pc_tensor = torch.from_numpy(tissue_pc).permute(1,0).unsqueeze(0).float().to(device)
-                            cylinder_pc_tensor = torch.from_numpy(cylinder_pc).permute(1,0).unsqueeze(0).float().to(device)
-                            goal_pc_tensor = goal_model(pc_tensor, cylinder_pc_tensor)
-                            
-                            
-                            predicted_goal = goal_pc_tensor.squeeze().cpu().detach().numpy().transpose(1,0)
-                            pcd_goal = pcd_ize(predicted_goal, color=[1,0,0])
-                            pcd_cylinder = pcd_ize(cylinder_pc, color=[0,1,0])   
-                            pcd_tissue = pcd_ize(tissue_pc, color=[0,0,0])   
-                            
-                            if visualization:
-                                open3d.visualization.draw_geometries([pcd_goal, pcd_tissue, pcd_cylinder, pcd_gt_goal])                               
 
 
                     else:
@@ -827,20 +917,19 @@ if __name__ == "__main__":
                         final_full_pc = get_point_cloud()
                         (tri_indices, tri_parents, tri_normals) = gym.get_sim_triangles(sim)
                         
-                        final_percent = compute_intersection_percent(final_full_pc, tri_indices, cylinder_shift, 
-                                                            cylinder_radius, cylinder_length, vis = visualization)
-                        print_color(f"***Final percent intersect: {final_percent*100} %")
-
-                        final_partial_pc = get_tissue_partial_pc_multi_views(vis=False)
-                        record_eval_data(final_partial_pc, final_full_pc, tri_indices, cylinder_shift, final_percent, save_path)
+                        record_data(init_full_pc, final_full_pc, tri_indices, cylinder_shift, save_path)
                         all_done = True
 
+                        percent = compute_intersection_percent(final_full_pc, tri_indices, cylinder_shift=cylinder_shift, vis = False)
+                        print(f"***Final percent intersect: {percent*100} %")
 
-                        pcd_partial = pcd_ize(final_partial_pc, color=[0,0,0])
-                        
-                        if visualization:
-                            open3d.visualization.draw_geometries([pcd_partial, pcd_gt_goal])
-                        
+                        # full_pc = get_point_cloud()     
+                        # print("distance 2 edges:", np.mean(full_pc[edges_idxs_1], axis=0)-np.mean(full_pc[edges_idxs_2], axis=0))      
+
+                        if not use_record_goal:
+                            data = get_partial_point_cloud(i)
+                            with open(os.path.join(recorded_goal_path, "goal_pc.pickle"), 'wb') as handle:
+                                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL) 
 
         # if state == "reset":   
         #     rospy.loginfo("**Current state: " + state)
@@ -882,11 +971,23 @@ if __name__ == "__main__":
         gym.step_graphics(sim)
         if not args.headless:
             gym.draw_viewer(viewer, sim, False)
+            # gym.sync_frame_time(sim)
 
 
+  
+
+
+    # pcd = open3d.geometry.PointCloud()
+    # pcd.points = open3d.utility.Vector3dVector(get_point_cloud())
+    # open3d.io.write_point_cloud("/home/baothach/Downloads/wrap_tissue_mesh.ply", pcd)
+
+    # data = get_point_cloud()[backbone_idxs]
+    # with open("/home/baothach/Downloads/wrap_tissue_backbone.pickle", 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)  
 
     print("All done !")
     print("Elapsed time", timeit.default_timer() - start_time)
     if not args.headless:
         gym.destroy_viewer(viewer)
     gym.destroy_sim(sim)
+    # print("total data pt count: ", data_point_count)

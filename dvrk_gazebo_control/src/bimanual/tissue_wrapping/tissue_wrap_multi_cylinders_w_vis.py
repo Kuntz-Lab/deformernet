@@ -629,12 +629,12 @@ if __name__ == "__main__":
             if vis_frame_count % 2 == 0:
                 gym.render_all_camera_sensors(sim)
                 im = gym.get_camera_image(sim, envs_obj[i], vis_cam_handles[0], gymapi.IMAGE_COLOR).reshape((vis_cam_height,vis_cam_width,4))[:,:,:3]
-                # goal_xs, goal_ys = get_goal_projected_on_image(data["full pcs"][1], i, thickness = 1)
-                im[goal_xs, goal_ys, :] = [255,0,0]
+                # # goal_xs, goal_ys = get_goal_projected_on_image(data["full pcs"][1], i, thickness = 1)
+                # im[goal_xs, goal_ys, :] = [255,0,0]
                 image = im.astype(np.uint8)
 
 
-                im = Image.fromarray(im)
+                # im = Image.fromarray(im)
                 
                 for point in points:
                     image = cv2.circle(image, tuple(point), radius, color, thickness)        
