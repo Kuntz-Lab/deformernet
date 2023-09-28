@@ -3,7 +3,6 @@ import numpy as np
 from copy import deepcopy
 import matplotlib.pyplot as plt
 import torch
-from isaacgym import gymapi
 import torchvision
 from torchvision.utils import make_grid
 
@@ -72,6 +71,7 @@ def get_partial_pointcloud_vectorized(gym, sim, env, cam_handle, cam_prop, segme
     '''
     Remember to render all camera sensors before calling this method in isaac gym simulation
     '''
+    from isaacgym import gymapi
     gym.render_all_camera_sensors(sim)
     cam_width = cam_prop.width
     cam_height = cam_prop.height
@@ -408,3 +408,12 @@ def create_media_from_images(image_list, output_path, frame_duration=1.0, output
                 writer.append_data(np.array(image_frame))
     else:
         raise ValueError("Invalid output format. Supported formats are 'gif' and 'mp4'.")
+    
+    
+def add_frames(img_dir, source_frame, num_new_frames):
+    import shutil
+    import os
+    src = os.path.join(img_dir, f'img{source_frame:03}.png')
+    for frame in range(source_frame+1, source_frame+num_new_frames+1):
+        dst = os.path.join(img_dir, f'img{frame:03}.png')
+        shutil.copy(src, dst)   

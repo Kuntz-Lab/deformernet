@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import os
 
+
 image_path = "/home/baothach/shape_servo_data/tissue_wrap/visualization/final_TRO_vis"
 
 num_images = len(os.listdir(image_path))

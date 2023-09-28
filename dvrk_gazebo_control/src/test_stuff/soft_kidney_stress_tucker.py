@@ -156,7 +156,7 @@ if __name__ == "__main__":
     # enable Von-Mises stress visualization
     sim_params.stress_visualization = True
     sim_params.stress_visualization_min = 0.0
-    sim_params.stress_visualization_max = 8.e+2
+    sim_params.stress_visualization_max = 5e3   #8.e+2
     sim_params.use_gpu_pipeline = False
 
     sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, sim_params)
@@ -200,8 +200,11 @@ if __name__ == "__main__":
     print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
-    asset_root = "/home/baothach/sim_data/Custom/Custom_urdf/retraction_cutting/multi_box"
-    soft_asset_file = args.obj_name + ".urdf"   
+    asset_root = "/home/baothach/sim_data/Custom/Custom_objects/random_stuff/urdf"
+    soft_asset_file = "kidney.urdf"  
+    # asset_root = "/home/baothach/sim_data/Custom/Custom_urdf/goal_generation/multi_kidneys_defgoalnet"
+    # soft_asset_file = f"kidney_{0}.urdf"
+
 
     # Get primitive shape dictionary to know the dimension of the object   
     object_meshes_path = "/home/baothach/sim_data/Custom/Custom_mesh/retraction_cutting/multi_box"   
@@ -214,8 +217,8 @@ if __name__ == "__main__":
     
     soft_pose = gymapi.Transform()
     z_coor = base_thickness*0.5 + thickness/2*0.5
-    soft_pose.p = gymapi.Vec3(0.0, -0.42, z_coor)
-    soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
+    soft_pose.p = gymapi.Vec3(0.0, -0.42, 0.03)
+    # soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
     soft_thickness = 0.001#0.0005    # important to add some thickness to the soft body to avoid interpenetrations
 
 
@@ -283,7 +286,8 @@ if __name__ == "__main__":
     # Camera setup
     if not args.headless:
         # cam_pos = gymapi.Vec3(0.1, -0.2, 0.2)
-        cam_pos = gymapi.Vec3(-0.1, -0.65, 0.2)
+        # cam_pos = gymapi.Vec3(-0.1, -0.65, 0.2)
+        cam_pos = gymapi.Vec3(-0.15, -0.55, 0.2)
         cam_target = gymapi.Vec3(0.0, soft_pose.p.y, 0.05)
         middle_env = envs[num_envs // 2 + num_per_row // 2]
         gym.viewer_camera_look_at(viewer, middle_env, cam_pos, cam_target)
@@ -474,6 +478,7 @@ if __name__ == "__main__":
             rospy.loginfo("**Current state: " + state) 
 
             max_x = max_y = max_z = h * 0.5 * 0.8 * 3/4 #h * 0.7 * 0.8 
+            max_x = max_y = max_z = 0
             # max_z *= 1./2
 
             # delta_alpha = np.random.uniform(low = -np.pi/3, high = np.pi/3)
