@@ -251,4 +251,21 @@ def read_youngs_value_from_urdf(urdf_file):
 #         return None  # Folder not found
 
 
+def get_extents_object(tet_file):
+    """Return [min_x, min_y, min_z], [max_x, max_y, max_z] for a tet mesh"""
+    mesh_lines = list(open(tet_file, "r"))
+    mesh_lines = [line.strip('\n') for line in mesh_lines]
+    zs = []
+    particles = []
+    for ml in mesh_lines:
+        sp = ml.split(" ")
+        if sp[0] == 'v':
+            particles.append([float(sp[j]) for j in range(1,4)])
+                
+    particles = np.array(particles)
+    xs = particles[:,0]
+    ys = particles[:,1]
+    zs = particles[:,2]
     
+    return [[min(xs), min(ys), min(zs)],\
+            [max(xs), max(ys), max(zs)]]   

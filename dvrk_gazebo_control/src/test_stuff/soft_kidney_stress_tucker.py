@@ -201,7 +201,7 @@ if __name__ == "__main__":
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
     asset_root = "/home/baothach/sim_data/Custom/Custom_objects/random_stuff/urdf"
-    soft_asset_file = "kidney.urdf"  
+    soft_asset_file = "chicken_breast.urdf"     # meat chicken_breast kidney
     # asset_root = "/home/baothach/sim_data/Custom/Custom_urdf/goal_generation/multi_kidneys_defgoalnet"
     # soft_asset_file = f"kidney_{0}.urdf"
 
