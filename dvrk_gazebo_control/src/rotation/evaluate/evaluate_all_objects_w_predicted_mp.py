@@ -592,9 +592,9 @@ if __name__ == "__main__":
 
     ### Set up manipulation point model
     if args.mp_method == "dense_predictor" or args.mp_method == "keypoint":
-        from test_pointconv import ManiPointSegment
+        from dense_predictor_pointconv_architecture import DensePredictor
         
-        mp_seg_model = ManiPointSegment(num_classes=2).to(device)
+        mp_seg_model = DensePredictor(num_classes=2).to(device)
 
         # if object_category == "box_1k11xxx":
         #     weight_path = f"/home/baothach/shape_servo_data/manipulation_points/multi_box_5kPa/weights/seg/run1"
@@ -604,7 +604,7 @@ if __name__ == "__main__":
         weight_path = f"/home/baothach/shape_servo_data/manipulation_points/multi_{object_category}Pa/weights/seg/run1"        
         mp_seg_model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {mp_dense_epoch_num}")))       
         
-        
+   
         mp_seg_model.eval()
 
     elif args.mp_method == "classifier":

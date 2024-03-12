@@ -1,8 +1,8 @@
 import os
 import pickle
 
-save_urdf_path = "/home/baothach/sim_data/Custom/Custom_urdf/multi_cylinder_5kPa"
-object_meshes_path = "/home/baothach/sim_data/Custom/Custom_mesh/multi_cylinder_5kPa"
+save_urdf_path = "/home/baothach/sim_data/Custom/Custom_urdf/multi_cylinder_1kPa"
+object_meshes_path = "/home/baothach/sim_data/Custom/Custom_mesh/multi_cylinder_1kPa"
 shape_name = "cylinder"
 
 density = 100

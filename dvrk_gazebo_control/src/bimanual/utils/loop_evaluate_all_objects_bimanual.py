@@ -10,7 +10,7 @@ os.chdir(pkg_path)
 def run_evaluate_loop(headless, prim_name, stiffness, inside, num_obj=10):
     for i in range(0, num_obj):
 
-        os.system(f"rosrun dvrk_gazebo_control evaluate_all_objects_bimanual.py --flex --headless {str(headless)} --prim_name {prim_name}\
+        os.system(f"rosrun dvrk_gazebo_control evaluate_all_objects_bimanual_count_steps.py --flex --headless {str(headless)} --prim_name {prim_name}\
                     --stiffness {stiffness} --obj_name {i} --inside {str(inside)}")
 
 def run_collect_goals_loop(headless, prim_name, stiffness, inside, num_obj=10):

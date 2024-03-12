@@ -1,5 +1,4 @@
-main_dir = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/evaluate/chamfer_results/model_combined"
-obj_name = "chicken_breast"
+
 
 import numpy as np
 import pickle5 as pickle
@@ -18,7 +17,7 @@ def get_results(range_data, unseen_obj_name=None):
     chamfer_data = []
     chamfer_data_avg = []
     for i in range_data:
-        unseen_objects_main_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/evaluate/chamfer_results/model_combined"
+        unseen_objects_main_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/evaluate/chamfer_results_2/model_combined"
         file_name = os.path.join(unseen_objects_main_path, unseen_obj_name, f"{unseen_obj_name}_{i}.pickle")
 
         if os.path.isfile(file_name):
@@ -72,22 +71,26 @@ for unseen_obj_name in unseen_objects_list:
 
 
     filtered_idxs = filtering_condition(res)
-    print("filtered_idxs:", filtered_idxs.shape)
+    # print("filtered_idxs:", filtered_idxs.shape)
     
     filtered_idxs_2 = np.where(res_avg < 3)[0]
     filtered_idxs = np.array(list(set.intersection(set(filtered_idxs), set(filtered_idxs_2))))
-    print("filtered_idxs:", filtered_idxs.shape)
+    # print("filtered_idxs:", filtered_idxs.shape)
 
 
-    print("Filtered results +++++++")
+    # print("Filtered results +++++++")
     
     nodes = res_avg#[filtered_idxs]
     chamfers = res#[filtered_idxs]
+    
+    print(len(nodes))
 
     # print("Node:", np.mean(nodes), np.max(nodes), np.min(nodes))
     # print("Chamfer:", np.mean(chamfers), np.max(chamfers), np.min(chamfers))
-    target_idx = round(filtered_idxs.shape[0]*0.75)
-    idx = np.argsort(nodes)[max(target_idx-10,0):target_idx] 
+    target_idx = round(filtered_idxs.shape[0]*0)
+    idx = np.argsort(nodes)[max(target_idx,0):target_idx+10] 
+    
+    idx = 5
     print("Idx of interest:", idx)
     print(nodes[idx])
     print(chamfers[idx])

@@ -32,7 +32,8 @@ import pickle5 as pickle
 # from sklearn.decomposition import PCA
 import timeit
 from copy import deepcopy
-# from PIL import Image
+from PIL import Image
+import cv2
 import transformations
 from sklearn.neighbors import NearestNeighbors
 
@@ -111,7 +112,7 @@ def get_partial_point_cloud(i):
     fv = 2/proj[1, 1]
 
     # Ignore any points which originate from ground plane or empty space
-    # depth_buffer[seg_buffer == 11] = -10001
+    depth_buffer[seg_buffer == 11] = -10001
 
     centerU = cam_width/2
     centerV = cam_height/2
@@ -136,113 +137,54 @@ def get_partial_point_cloud(i):
     # return points
     return np.array(points).astype('float32')
 
-
-def get_mp_classifier(classifier_model, partial_init_pc, partial_goal_pc, full_init_pc, 
-                    num_candidates=400, batch_size=64, compute_method="weighted average", vis=False):
+def get_goal_projected_on_image(goal_pc, i, thickness = 0):
+    # proj = gym.get_camera_proj_matrix(sim, envs_obj[i], cam_handles[i])
+    # fu = 2/proj[0, 0]
+    # fv = 2/proj[1, 1]
     
-    pc_goal_tensor = torch.from_numpy(partial_goal_pc).permute(1,0).unsqueeze(0).float().to(device)    
 
-    # Sample (randomly) some points for MP candidates; only pick points that are in the top half of the object (near robot)
-    downsampled_pc = down_sampling(partial_init_pc, num_pts=512) #partial_init_pc
-    ys = downsampled_pc[:,1]
-    avg_y = (max(ys) + min(ys))/2
-    mp_candidates_idxs = np.where(ys >= avg_y)[0]     # only pick points that are in the top half of the object
-    mp_candidates_idxs = np.random.choice(mp_candidates_idxs, size = num_candidates)
-    mp_candidates = downsampled_pc[mp_candidates_idxs]
+    u_s =[]
+    v_s = []
+    for point in goal_pc:
+        point = list(point) + [1]
 
-    # Configure input to the neural network (concat MP to the current point cloud)
-    neigh = NearestNeighbors(n_neighbors=50)
-    neigh.fit(partial_init_pc)
-    _, nearest_idxs = neigh.kneighbors(mp_candidates)
-    mp_channel = np.zeros((mp_candidates.shape[0], partial_init_pc.shape[0]))
-    mp_channel[np.array([i // 50 for i in range(mp_candidates.shape[0]*50)]),nearest_idxs.flatten()] = 1
+        point = np.expand_dims(np.array(point), axis=0)
 
-    pcs_tensor = torch.from_numpy(partial_init_pc).permute(1,0).unsqueeze(0).repeat(mp_candidates.shape[0],1,1)
-    modified_pc_tensor = torch.cat((pcs_tensor, torch.from_numpy(mp_channel).unsqueeze(1)), dim=1).float().to(device)
+        point_cam_frame = point * np.matrix(gym.get_camera_view_matrix(sim, envs_obj[i], vis_cam_handles[0]))
+        # print("point_cam_frame:", point_cam_frame)
+        # image_coordinates = (gym.get_camera_proj_matrix(sim, envs_obj[i], cam_handles[0]) * point_cam_frame)
+        # print("image_coordinates:",image_coordinates)
+        # u_s.append(image_coordinates[1, 0]/image_coordinates[2, 0]*2)
+        # v_s.append(image_coordinates[0, 0]/image_coordinates[2, 0]*2)
+        # print("fu fv:", fu, fv)
+        u_s.append(1/2 * point_cam_frame[0, 0]/point_cam_frame[0, 2])
+        v_s.append(1/2 * point_cam_frame[0, 1]/point_cam_frame[0, 2])      
+          
+    centerU = vis_cam_width/2
+    centerV = vis_cam_height/2    
+    # print(centerU - np.array(u_s)*cam_width)
+    # y_s = (np.array(u_s)*cam_width).astype(int)
+    # x_s = (np.array(v_s)*cam_height).astype(int)
+    y_s = (centerU - np.array(u_s)*vis_cam_width).astype(int)
+    x_s = (centerV + np.array(v_s)*vis_cam_height).astype(int)    
 
-    pcs_goal_tensor = pc_goal_tensor.repeat(mp_candidates.shape[0],1,1)
-    # print("pcs_goal_tensor.shape, pcs_tensor.shape:", pcs_goal_tensor.shape, pcs_tensor.shape)
-
-
-    with torch.no_grad():
-        outputs = []
-        # for batch_pc, batch_pc_goal in zip(torch.split(modified_pc_tensor, num_candidates//batch_size), torch.split(pcs_goal_tensor, num_candidates//batch_size)):
-        for batch_pc, batch_pc_goal in zip(torch.split(modified_pc_tensor, batch_size), torch.split(pcs_goal_tensor, batch_size)):
-            outputs.append(classifier_model(batch_pc, batch_pc_goal))
-
-
-        output = torch.cat(tuple(outputs), dim=0)
-        success_probs = np.exp(output.cpu().detach().numpy())[:,1]
-        print("max(success_probs):", max(success_probs))       
-        if compute_method == "max":
-            best_mp = mp_candidates[np.argmax(success_probs)]   # point with the highest probability
-        elif compute_method == "weighted average":
-            best_mp = np.average(mp_candidates, axis=0, weights=success_probs)   # weighted average of all candidates, with weight equal to probability
-
-
-        if vis:
-            success_probs = (success_probs/max(success_probs))
-            
-            pcd = open3d.geometry.PointCloud()
-            pcd.points = open3d.utility.Vector3dVector(np.array(partial_init_pc))
-            pcd_goal = open3d.geometry.PointCloud()
-            pcd_goal.points = open3d.utility.Vector3dVector(np.array(partial_goal_pc))    
-
-            # Predicted MP
-            heats = np.array([[prob, 0, 0] for prob in success_probs])
-            best_mani_point = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-            best_mani_point.paint_uniform_color([0,1,0])  
-
-            colors = np.zeros(partial_init_pc.shape)
-            colors[mp_candidates_idxs] = heats  
-            pcd.colors =  open3d.utility.Vector3dVector(colors) 
-            
-            # Ground truth MP
-            mani_point = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-            mani_point.paint_uniform_color([0,0,1])
-           
-            # Visualization
-            open3d.visualization.draw_geometries([pcd, mani_point.translate(tuple(gt_mp)), best_mani_point.translate(tuple(best_mp)), \
-                                                    pcd_goal.translate((0.2,0,0))])  
-        
-
-    return best_mp
-
-
-def get_mp_seg(seg_model, pc_init_numpy, pc_initial_tensor, pc_goal_tensor, compute_method="max", vis=False, num_kp_candidates=100):
-    output = seg_model(pc_initial_tensor, pc_goal_tensor)
-    success_probs = np.exp(output.squeeze().cpu().detach().numpy())[1,:]
-    # print("total candidates:", sum([1 if s>0.5 else 0 for s in success_probs]))
-    # print(success_probs)
-    # print(np.max(success_probs))
-
-    if compute_method == "max":
-        best_mp = pc_init_numpy[np.argmax(success_probs)]  # point with the highest probability
-    elif compute_method == "weighted average":
-        best_mp = np.average(pc_init_numpy, axis=0, weights=success_probs) 
-    elif compute_method == "keypoint":    
-        best_candidates =  pc_init_numpy[np.argsort(success_probs)[-num_kp_candidates:]]
-        dists_to_gt = np.linalg.norm(gt_mp-best_candidates, axis=1)
-        best_mp = best_candidates[np.argsort(dists_to_gt)[-1]]
-
-    if vis:
-        pcd = open3d.geometry.PointCloud()
-        pcd.points = open3d.utility.Vector3dVector(np.array(pc_init_numpy))
-
-        best_mani_point = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-        best_mani_point.paint_uniform_color([0,1,0])  
-        best_mani_point.translate(tuple(best_mp))
-
-        gt_mani_point = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-        gt_mani_point.paint_uniform_color([0,0,1])
-        gt_mani_point.translate(tuple(gt_mp))
-
-        heats = np.array([[prob, 0, 0] for prob in success_probs/max(success_probs)])
-        pcd.colors =  open3d.utility.Vector3dVector(heats) 
-
-        open3d.visualization.draw_geometries([pcd, best_mani_point, deepcopy(pcd_goal).translate((0.2,0,0)), gt_mani_point])
-    
-    return best_mp
+    if thickness != 0:
+        new_y_s = deepcopy(list(y_s))
+        new_x_s = deepcopy(list(x_s))
+        for y, x in zip(y_s, x_s):
+            for t in range(1, thickness+1):
+                new_y_s.append(max(y-t,0))
+                new_x_s.append(max(x-t,0))
+                new_y_s.append(max(y-t,0))
+                new_x_s.append(min(x+t, vis_cam_height-1))                
+                new_y_s.append(min(y+t, vis_cam_width-1))
+                new_x_s.append(max(x-t,0))                    
+                new_y_s.append(min(y+t, vis_cam_width-1))                
+                new_x_s.append(min(x+t, vis_cam_height-1))
+        y_s = new_y_s
+        x_s = new_x_s
+    # print(x_s)
+    return x_s, y_s
 
 if __name__ == "__main__":
 
@@ -276,7 +218,8 @@ if __name__ == "__main__":
     sim_type = gymapi.SIM_FLEX
     sim_params = gymapi.SimParams()
     sim_params.up_axis = gymapi.UP_AXIS_Z
-    sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
+    # sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
+    sim_params.gravity = gymapi.Vec3(0.0, 0.0, -10)
     if sim_type is gymapi.SIM_FLEX:
         sim_params.substeps = 4
         # print("=================sim_params.dt:", sim_params.dt)
@@ -399,7 +342,7 @@ if __name__ == "__main__":
 
         # add soft obj        
         env_obj = env
-        env_obj = gym.create_env(sim, env_lower, env_upper, num_per_row)
+        # env_obj = gym.create_env(sim, env_lower, env_upper, num_per_row)
         envs_obj.append(env_obj)        
         
         soft_actor = gym.create_actor(env_obj, soft_asset, soft_pose, "soft", i, 0)
@@ -455,7 +398,131 @@ if __name__ == "__main__":
         gym.set_actor_dof_properties(env, kuka_handles_2[i], dof_props_2)
         gym.set_actor_dof_properties(env, kuka_handles[i], dof_props_2)
 
-        
+    vis_cam_positions = []
+    vis_cam_targets = []
+    vis_cam_handles = []
+    vis_cam_width = 1000
+    vis_cam_height = 1000
+    vis_cam_props = gymapi.CameraProperties()
+    vis_cam_props.width = vis_cam_width
+    vis_cam_props.height = vis_cam_height
+
+    # # vis_cam_positions.append(gymapi.Vec3(-0.1, -0.2, 0.2))  # sample 4
+    # # vis_cam_positions.append(gymapi.Vec3(0.1, -0.3, 0.1)) # worst
+    # # vis_cam_positions.append(gymapi.Vec3(-0.1, -0.3, 0.1)) # 2nd worst, used for all cases
+    # # vis_cam_positions.append(gymapi.Vec3(-0.1, -0.35, 0.1)) # 75 percentile, index 59, IMSR
+    # # vis_cam_positions.append(gymapi.Vec3(0.1, -0.6, 0.15))
+    # # vis_cam_positions.append(gymapi.Vec3(0.1, -0.4, 0.15))
+    # # vis_cam_positions.append(gymapi.Vec3(0.1, -0.4, 0.1))
+    # vis_cam_positions.append(gymapi.Vec3(0.2, -0.65, 0.15))
+    # # vis_cam_positions.append(gymapi.Vec3(-0.05, -0.65, 0.1))
+
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+
+    ### Bimanual Box
+    #Max
+    # vis_cam_positions.append(gymapi.Vec3(-0.2, -0.5, 0.15))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+    # vis_cam_positions.append(gymapi.Vec3(-0.2, -0.5, 0.15))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+            
+    # #75th
+    # vis_cam_positions.append(gymapi.Vec3(0.15, -0.5, 0.15))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+    # vis_cam_positions.append(gymapi.Vec3(-0.15, -0.5, 0.15))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+    
+    # #Median
+    # vis_cam_positions.append(gymapi.Vec3(0.15, -0.4, 0.15))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+    # vis_cam_positions.append(gymapi.Vec3(-0.25, -0.5, 0.2))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+
+    # #25th
+    # vis_cam_positions.append(gymapi.Vec3(0.15, -0.4, 0.15))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+    # vis_cam_positions.append(gymapi.Vec3(0.25, -0.5, 0.15))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+    
+    # #Min
+    # vis_cam_positions.append(gymapi.Vec3(0.1, -0.5, 0.1))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+    # vis_cam_positions.append(gymapi.Vec3(0.1, -0.5, 0.1))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))
+    
+    # ### Bimanual cylinder
+    # vis_cam_positions.append(gymapi.Vec3(-0.15, -0.4, 0.1))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))    
+
+    ### Bimanual hemis
+    # vis_cam_positions.append(gymapi.Vec3(0.15, -0.55, 0.05))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01)) 
+
+
+    ### Bimanual chicken breast Node
+    # # Max
+    # vis_cam_positions.append(gymapi.Vec3(0.05, -0.56, 0.1))
+    # # # vis_cam_positions.append(gymapi.Vec3(0.05, -0.56, 0.08))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.52, 0.1))
+
+    # # 75th
+    # vis_cam_positions.append(gymapi.Vec3(-0.15, -0.58, 0.15))    # -0.60
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01)) 
+
+    # # 50th
+    # # # vis_cam_positions.append(gymapi.Vec3(0.1, -0.55, 0.1))
+    # # # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))    
+    # vis_cam_positions.append(gymapi.Vec3(0.2, -0.55, 0.1))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01)) 
+    
+    # # 25th     
+    # vis_cam_positions.append(gymapi.Vec3(-0.05, -0.51, 0.12))
+    # vis_cam_targets.append(gymapi.Vec3(0.05, -0.5, 0.05))  
+    
+    # # Min
+    # vis_cam_positions.append(gymapi.Vec3(0.1, -0.43, 0.12))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))  
+    vis_cam_positions.append(gymapi.Vec3(-0.1, -0.53, 0.12))
+    vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))      
+    
+    ### Bimanual chicken breast Chamfer
+    # # Max
+    # vis_cam_positions.append(gymapi.Vec3(0.02, -0.42, 0.1)) # -0.45
+    # vis_cam_targets.append(gymapi.Vec3(-0.1, -0.5, 0.01))   
+    
+    # # 75th     
+    # vis_cam_positions.append(gymapi.Vec3(0.05, -0.5, 0.08))
+    # vis_cam_targets.append(gymapi.Vec3(-0.1, -0.5, 0.01))  
+    
+    # # 50th
+    # vis_cam_positions.append(gymapi.Vec3(0.15, -0.5, 0.05))
+    # vis_cam_targets.append(gymapi.Vec3(0.0, -0.5, 0.01))  
+    
+    # # 25th  
+    # vis_cam_positions.append(gymapi.Vec3(-0.05, -0.5, 0.18))
+    # vis_cam_targets.append(gymapi.Vec3(0.05, -0.5, 0.05))     
+    
+    # # Min   
+    # vis_cam_positions.append(gymapi.Vec3(-0.1, -0.45, 0.15))
+    # vis_cam_targets.append(gymapi.Vec3(0.05, -0.5, 0.05))     
+
+
+    # Visualization stuff
+    prepare_vis_cam = True
+    start_vis_cam = True #False 
+    vis_frame_count = 0
+    num_image = 0
+    image_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/visualization/recordings"
+    save_path = os.path.join(image_path, args.obj_name, "test")  
+    os.makedirs(save_path, exist_ok=True)
+
+
+
+    for i, env_obj in enumerate(envs_obj):
+        # for c in range(len(cam_positions)):
+            vis_cam_handles.append(gym.create_camera_sensor(env_obj, vis_cam_props))
+            gym.set_camera_location(vis_cam_handles[i], env_obj, vis_cam_positions[0], vis_cam_targets[0])
+                    
 
     '''
     Main stuff is here
@@ -568,10 +635,10 @@ if __name__ == "__main__":
 
 
 
-    goal_recording_path = os.path.join(main_path, "goal_data", args.obj_name)
-    chamfer_recording_path = os.path.join(main_path, "chamfer_results", f"model_{model_category}", args.obj_name)
+    goal_recording_path = os.path.join(main_path, "goal_data_2", args.obj_name)
+    # chamfer_recording_path = os.path.join(main_path, "chamfer_results_2", f"model_{model_category}", args.obj_name)
     
-    os.makedirs(chamfer_recording_path, exist_ok=True)
+    # os.makedirs(chamfer_recording_path, exist_ok=True)
 
 
     goal_count = 0 #0
@@ -627,6 +694,7 @@ if __name__ == "__main__":
     robot_2 = Robot(gym, sim, envs[0], kuka_handles_2[0])
     robot_1 = Robot(gym, sim, envs[0], kuka_handles[0])
 
+
     while (not close_viewer) and (not all_done): 
 
 
@@ -637,7 +705,38 @@ if __name__ == "__main__":
         # step the physics
         gym.simulate(sim)
         gym.fetch_results(sim, True)
+
+        if prepare_vis_cam:
+            radius = 5  #5  #2 #1        
+            # Red color in BGR
+            color = (0, 0, 255)
+            thickness = -1  #-1  #2 
+            goal_xs, goal_ys = get_goal_projected_on_image(down_sampling(goal_datas["full pcs"][1], num_pts=512), i, thickness = 0)
+            points = np.column_stack((np.array(goal_ys), np.array(goal_xs)))
+            prepare_vis_cam = False
+
  
+        if start_vis_cam:   
+            if vis_frame_count % 5 == 0:
+                gym.render_all_camera_sensors(sim)
+                im = gym.get_camera_image(sim, envs_obj[i], vis_cam_handles[0], gymapi.IMAGE_COLOR).reshape((vis_cam_height,vis_cam_width,4))[:,:,:3]
+                # goal_xs, goal_ys = get_goal_projected_on_image(data["full pcs"][1], i, thickness = 1)
+                im[goal_xs, goal_ys, :] = [255,0,0]
+                image = im.astype(np.uint8)
+
+
+                im = Image.fromarray(im)
+                
+                for point in points:
+                    image = cv2.circle(image, tuple(point), radius, color, thickness)        
+
+                path =  os.path.join(save_path, f'img{num_image:03}.png')                  
+                cv2.imwrite(path, image)
+
+                num_image += 1        
+
+            vis_frame_count += 1 
+            
 
         if state == "home" :   
             frame_count += 1
@@ -793,7 +892,7 @@ if __name__ == "__main__":
 
             node_dist = np.linalg.norm(full_pc_goal - get_point_cloud())
             saved_nodes.append(node_dist)
-            rospy.logwarn(f"Node distance: {node_dist}")
+            rospy.logwarn(f"Node distance: {node_dist/full_pc_goal.shape[0]*1000}")
 
             chamfer_dist = np.linalg.norm(np.asarray(pcd_goal.compute_point_cloud_distance(pcd)))
             saved_chamfers.append(chamfer_dist)
@@ -843,7 +942,7 @@ if __name__ == "__main__":
             h = np.array(extents[1][1])-np.array(extents[0][1])    # delta_y 
             max_x = max_y = max_z = h * 0.8
             max_x *= 3/4 
-            max_y *= 3/4 * 1/2 * 2/3
+            max_y *= 3/4 * 2/3 * 1/2
             max_z *= 3/4
                 
                 
@@ -861,13 +960,19 @@ if __name__ == "__main__":
             temp1 = np.eye(4) 
             temp1[:3,:3] = rot_mat_1
             eulers_1 = transformations.euler_from_matrix(temp1)
-            new_eulers_1 = list(np.clip(list(eulers_1),-np.pi/6,np.pi/6))
+            # new_eulers_1 = list(np.clip(list(eulers_1),-np.pi/6,np.pi/6))
+            
+            threshold = np.array([np.pi/6, np.pi/60, np.pi/6])
+            new_eulers_1 = list(np.clip(list(eulers_1), -threshold, threshold))
+            
             rot_mat_1 = transformations.euler_matrix(*new_eulers_1)[:3,:3]
             
             temp2 = np.eye(4) 
             temp2[:3,:3] = rot_mat_2
             eulers_2 = transformations.euler_from_matrix(temp2)
-            new_eulers_2 = list(np.clip(list(eulers_2),-np.pi/6,np.pi/6))
+            # new_eulers_2 = list(np.clip(list(eulers_2),-np.pi/6,np.pi/6))
+            
+            new_eulers_2 = list(np.clip(list(eulers_2), -threshold, threshold))
             rot_mat_2 = transformations.euler_matrix(*new_eulers_2)[:3,:3]            
 
             # print(pos[0])
@@ -964,8 +1069,10 @@ if __name__ == "__main__":
                         init_eulers_2 = transformations.euler_from_matrix(init_pose_2)    
                         state = "get shape servo plan"    
                     else:
-                        gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position())
-                        gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position())
+                        gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position()/2)
+                        gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position()/2)
+                        # gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position())
+                        # gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position())
 
                     # Terminal conditions
                                      
@@ -994,8 +1101,9 @@ if __name__ == "__main__":
 
         if state == "reset":   
 
+            coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
             pcd.paint_uniform_color([0,0,0])
-            open3d.visualization.draw_geometries([pcd, pcd_goal])
+            open3d.visualization.draw_geometries([pcd, pcd_goal, coor.translate((0,-0.5,0))])
 
             rospy.loginfo("**Current state: " + state)
             frame_count = 0
@@ -1051,7 +1159,8 @@ if __name__ == "__main__":
             all_done = True 
            
 
-            # final_data = {"node": final_node_distances, "chamfer": final_chamfer_distances, "num_nodes": full_pc_goal.shape[0]}
+            # final_data = {"node": final_node_distances, "chamfer": final_chamfer_distances, 
+            #               "num_nodes": full_pc_goal.shape[0], "step_count": plan_count-1}
             # with open(os.path.join(chamfer_recording_path, f"{args.obj_name}_{args.obj_idx}.pickle"), 'wb') as handle:
             #     pickle.dump(final_data, handle, protocol=pickle.HIGHEST_PROTOCOL) 
 

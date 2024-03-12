@@ -41,7 +41,8 @@ from behaviors import MoveToPose, TaskVelocityControl, TaskVelocityControl2
 from scipy import interpolate
 
 
-from utils.miscellaneous_utils import down_sampling, get_extents_object
+sys.path.append('/home/baothach/shape_servo_DNN')
+from farthest_point_sampling import *
 
 import torch
 
@@ -136,6 +137,10 @@ def get_partial_point_cloud(i):
     # return points
     return np.array(points).astype('float32')
 
+def down_sampling(pc, num_pts=1024):
+    farthest_indices,_ = farthest_point_sampling(pc, num_pts)
+    pc = pc[farthest_indices.squeeze()]  
+    return pc
 
 def get_mp_classifier(classifier_model, partial_init_pc, partial_goal_pc, full_init_pc, 
                     num_candidates=400, batch_size=64, compute_method="weighted average", vis=False):
@@ -257,27 +262,32 @@ if __name__ == "__main__":
         custom_parameters=[
             {"name": "--num_envs", "type": int, "default": 1, "help": "Number of environments to create"},
             {"name": "--num_objects", "type": int, "default": 10, "help": "Number of objects in the bin"},
-            {"name": "--obj_name", "type": str, "default": None, "help": "chicken_breast, meat, kidney, etc."},
-            {"name": "--obj_idx", "type": int, "default": None, "help": "Index of the object. From 0 to 99."},
-            {"name": "--model_category", "type": str, "default": "combined", "help": "which trained DeformerNet to use? Options: combined, box_1k, cylinder_5k, hemis_10k, etc. "},
+            {"name": "--prim_name", "type": str, "default": "box", "help": "Select primitive shape. Options: box, cylinder, hemis"},
+            {"name": "--stiffness", "type": str, "default": "1k", "help": "Select object stiffness. Options: 1k, 5k, 10k"},
+            {"name": "--obj_name", "type": int, "default": 0, "help": "select variations of a primitive shape"},
+            {"name": "--inside", "type": str, "default": "True", "help": "inside train distribution"},      
             {"name": "--headless", "type": str, "default": "False", "help": "headless mode"}])
 
     num_envs = args.num_envs
-        
+    
+    mesh_name = f"{args.prim_name}_{args.obj_name%10}"
+    
     args.headless = args.headless == "True"
-    main_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/evaluate"
-    objects_path = "/home/baothach/sim_data/Custom/Custom_objects/random_stuff"
-    object_meshes_path = os.path.join(objects_path, "mesh")
+    args.inside = args.inside == "True"
+    args.obj_name = f"{args.prim_name}_{args.obj_name}"
+    
 
-    model_category = args.model_category
+    object_category = f"{args.prim_name}_{args.stiffness}"
+    main_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/multi_{object_category}Pa/evaluate"
+    objects_path = "/home/baothach/shape_servo_data/evaluation"        
+    distribution_keyword = "inside" if args.inside else "outside"
 
 
     # configure sim
     sim_type = gymapi.SIM_FLEX
     sim_params = gymapi.SimParams()
     sim_params.up_axis = gymapi.UP_AXIS_Z
-    # sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
-    sim_params.gravity = gymapi.Vec3(0.0, 0.0, -10)
+    sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
     if sim_type is gymapi.SIM_FLEX:
         sim_params.substeps = 4
         # print("=================sim_params.dt:", sim_params.dt)
@@ -294,7 +304,22 @@ if __name__ == "__main__":
 
     sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, sim_params)
 
-    
+    # Get primitive shape dictionary to know the dimension of the object   
+    object_meshes_path = os.path.join(objects_path, "meshes", object_category, distribution_keyword)
+
+
+    with open(os.path.join(object_meshes_path, mesh_name + ".pickle"), 'rb') as handle:
+        data = pickle.load(handle)    
+    if args.prim_name == "box":
+        h = data["height"]
+        w = data["width"]
+        thickness = data["thickness"]
+    elif args.prim_name == "cylinder":
+        r = data["radius"]
+        h = data["height"]
+    elif args.prim_name == "hemis":
+        r = data["radius"]
+        o = data["origin"]
 
 
     # add ground plane
@@ -341,15 +366,32 @@ if __name__ == "__main__":
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
 
-    asset_root = os.path.join(objects_path, "urdf", args.obj_name)
-    soft_asset_file = f"{args.obj_name}_{args.obj_idx}.urdf" 
-    tet_file = os.path.join(object_meshes_path, f"{args.obj_name}.tet")
-    extents = get_extents_object(tet_file)
+    asset_root = os.path.join(objects_path, "bimanual_urdf", object_category, distribution_keyword)
+
+
+
+    soft_asset_file = args.obj_name + ".urdf"    
+    # asset_root = "/home/baothach/sim_data/Custom/Custom_urdf/test"
+    # soft_asset_file = "long_box.urdf"
+    # asset_root = "/home/baothach/Downloads"
+    # soft_asset_file = "test_box.urdf"
 
 
 
     soft_pose = gymapi.Transform()
-    soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, -extents[0][2])
+    # soft_pose.p = gymapi.Vec3(0.0, -0.42, thickness/2*0.5)
+    # soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
+
+    if args.prim_name == "box": 
+        soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, thickness/2*0.5)
+        soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
+    elif args.prim_name == "cylinder": 
+        soft_pose.p = gymapi.Vec3(0, -two_robot_offset/2, r/2.0)
+        soft_pose.r = gymapi.Quat(0.7071068, 0, 0, 0.7071068)
+    elif args.prim_name == "hemis":
+        soft_pose = gymapi.Transform()
+        soft_pose.p = gymapi.Vec3(0, -two_robot_offset/2, -o/2.)
+
     soft_thickness = 0.001#0.0005    # important to add some thickness to the soft body to avoid interpenetrations
 
 
@@ -463,7 +505,7 @@ if __name__ == "__main__":
     '''
     rospy.init_node('isaac_grasp_client')
     rospy.logerr("======Loading object ... " + str(args.obj_name))  
-    rospy.logerr(f"Object name ... {args.obj_name}; Model type ... {model_category}") 
+    rospy.logerr(f"Object type ... {object_category}; inside: {args.inside}") 
 
  
 
@@ -478,49 +520,44 @@ if __name__ == "__main__":
     device = torch.device("cuda")
 
     
-    # Model trained on all objects
-    if model_category == "combined":
-        deformernet_epoch_num = 160 #200#200  
-        mp_dense_epoch_num = 160  
-    
     ## Box
-    elif model_category == "box_1k":
+    if object_category == "box_1k":
         deformernet_epoch_num = 160 #200#200  
         mp_dense_epoch_num = 160  
           
-    elif model_category == "box_5k":
+    elif object_category == "box_5k":
         deformernet_epoch_num = 160 #200  
         mp_dense_epoch_num = 160  
           
-    elif model_category == "box_10k":
+    elif object_category == "box_10k":
         deformernet_epoch_num = 160 #200  
         mp_dense_epoch_num = 160  
           
     
     ## Cylinder
-    elif model_category == "cylinder_1k":
+    elif object_category == "cylinder_1k":
         deformernet_epoch_num = 160 #200  
         mp_dense_epoch_num = 160  
             
-    elif model_category == "cylinder_5k":
+    elif object_category == "cylinder_5k":
         deformernet_epoch_num = 160 #200  
         mp_dense_epoch_num = 160  
           
-    elif model_category == "cylinder_10k":
+    elif object_category == "cylinder_10k":
         deformernet_epoch_num = 160 #200  
         mp_dense_epoch_num = 160  
           
     
     ## Hemisphere
-    elif model_category == "hemis_1k":
+    elif object_category == "hemis_1k":
         deformernet_epoch_num = 160  
         mp_dense_epoch_num = 160  
            
-    elif model_category == "hemis_5k":
+    elif object_category == "hemis_5k":
         deformernet_epoch_num = 160  
         mp_dense_epoch_num = 160  
           
-    elif model_category == "hemis_10k":
+    elif object_category == "hemis_10k":
         deformernet_epoch_num = 160  
         mp_dense_epoch_num = 160  
           
@@ -532,34 +569,24 @@ if __name__ == "__main__":
 
     from bimanual_architecture import DeformerNetBimanualRot
     model = DeformerNetBimanualRot().to(device)
-        
-  
-    if model_category == "combined":
-        weight_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/all_objects/weights/run1"
+
+
+    if object_category in ["cylinder_10k"]:
+        weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/multi_{object_category}Pa/weights/run1/" 
     else:
-        weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/multi_{model_category}Pa/weights/run2/"
-                  
+        weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/multi_{object_category}Pa/weights/run2/"          
     model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {deformernet_epoch_num}")))  
     
     # weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/multi_box_1kPa/weights/run2/"     #_backup
     # model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {160}")))
-
-    no_rot = False
-    if no_rot:
-        sys.path.append('/home/baothach/shape_servo_DNN/bimanual')
-        from bimanual_architecture import DeformerNetBimanual    
-        model = DeformerNetBimanual(normal_channel=False).to(device)
-        weight_path = "/home/baothach/shape_servo_data/bimanual/multi_boxes_1000Pa/weights/run1"
-        model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {300}")))    
-    
-    
-    model.eval()
+    # model.eval()
 
     """
     Notes: 
     -box1k model use for evaluation all box 1 5 and 10k
     -cylinder1k model for 1k, cylinder5k for both 5 and 10k
     -each evaluation hemis uses its own correspinding model. 
+    -cylinder10k only has run1
     """
 
     # mp_model_main_path = "/home/baothach/shape_servo_DNN/learn_mp"
@@ -571,7 +598,7 @@ if __name__ == "__main__":
     # from test_pointconv import ManiPointSegment
     
     # mp_seg_model = ManiPointSegment(num_classes=2).to(device)
-    # weight_path = f"/home/baothach/shape_servo_data/manipulation_points/multi_{model_category}Pa/weights/seg/run1"
+    # weight_path = f"/home/baothach/shape_servo_data/manipulation_points/multi_{object_category}Pa/weights/seg/run1"
     
     # mp_seg_model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {mp_dense_epoch_num}")))       
     # mp_seg_model.eval()
@@ -579,8 +606,10 @@ if __name__ == "__main__":
 
 
 
-    goal_recording_path = os.path.join(main_path, "goal_data_2", args.obj_name)
-    chamfer_recording_path = os.path.join(main_path, "chamfer_results_2", f"model_{model_category}", args.obj_name)
+    goal_recording_path = os.path.join(main_path, "goal_data", object_category, distribution_keyword)
+    
+    chamfer_path_kw = f"{distribution_keyword}"
+    chamfer_recording_path = os.path.join(main_path, "chamfer_results_count_steps", object_category, chamfer_path_kw)
     
     os.makedirs(chamfer_recording_path, exist_ok=True)
 
@@ -590,7 +619,10 @@ if __name__ == "__main__":
     max_goal_count =  1#0  #10
 
     max_shapesrv_time = 2.0*60    # 2 mins
-    min_chamfer_dist = 0.1 #0.2
+    if args.inside:
+        min_chamfer_dist = 0.1 #0.2
+    else:
+        min_chamfer_dist = 0.2 #0.25
     fail_mtp = False
     saved_nodes = []
     saved_chamfers = []
@@ -599,12 +631,13 @@ if __name__ == "__main__":
     random_bool = True
 
     plan_count = 0
+    step_count = 0
 
     dc_client = GraspDataCollectionClient()   
 
    
     # Get 10 goal pc data for 1 object:
-    with open(os.path.join(goal_recording_path, f"{args.obj_name}_{args.obj_idx}" + ".pickle"), 'rb') as handle:
+    with open(os.path.join(goal_recording_path, args.obj_name + ".pickle"), 'rb') as handle:
         goal_datas = pickle.load(handle) 
     goal_pc_numpy = down_sampling(goal_datas["partial pcs"][1])   # first goal pc
     goal_pc_tensor = torch.from_numpy(goal_pc_numpy).permute(1,0).unsqueeze(0).float().to(device) 
@@ -730,7 +763,16 @@ if __name__ == "__main__":
                 state = "move to preshape"
                 # rospy.loginfo('Moving to this preshape goal: ' + str(cartesian_goal))
 
-
+            if args.prim_name == "hemis":
+                ys = get_point_cloud()[:,1]
+                object_length = abs(max(ys)-min(ys))
+                # print("object_length:", object_length)
+                ee_loc_on_obj_1 = abs(best_mp_1[1]-soft_pose.p.y) + object_length/2 
+                ee_loc_on_obj_2 = abs(best_mp_2[1]-soft_pose.p.y) + object_length/2
+                # print("where ee:", ee_loc_on_obj_1, ee_loc_on_obj_2)  # 0.85 and 0.5
+                ee_ratio_1 = ee_loc_on_obj_1/object_length
+                ee_ratio_2 = ee_loc_on_obj_2/object_length
+                # print("ee_ratio:", ee_ratio_1, ee_ratio_2)
 
         if state == "move to preshape":         
             action_1 = mtp_behavior_1.get_action()
@@ -793,6 +835,7 @@ if __name__ == "__main__":
             rospy.loginfo("**Current state: " + state)
 
             plan_count += 1
+            step_count += 1
 
             current_pc_numpy = down_sampling(get_partial_point_cloud(i))                  
                             
@@ -804,7 +847,7 @@ if __name__ == "__main__":
 
             node_dist = np.linalg.norm(full_pc_goal - get_point_cloud())
             saved_nodes.append(node_dist)
-            rospy.logwarn(f"Node distance: {node_dist/full_pc_goal.shape[0]*1000}")
+            rospy.logwarn(f"Node distance: {node_dist}")
 
             chamfer_dist = np.linalg.norm(np.asarray(pcd_goal.compute_point_cloud_distance(pcd)))
             saved_chamfers.append(chamfer_dist)
@@ -843,98 +886,84 @@ if __name__ == "__main__":
             # open3d.visualization.draw_geometries([pcd, deepcopy(pcd_goal).translate((0.00,0,0)), \
             #                                     mani_point_1_sphere, mani_point_2_sphere])  
 
-            if no_rot:
-                with torch.no_grad():
-                    desired_position = model(current_pc_tensor, goal_pc_tensor)[0].cpu().detach().numpy()*(0.001)    
+           
+            with torch.no_grad():
+
+                pos, rot_mat_1, rot_mat_2 = model(current_pc_tensor, goal_pc_tensor) 
+                pos *= 0.001
+                pos, rot_mat_1, rot_mat_2 = pos.detach().cpu().numpy(), rot_mat_1.detach().cpu().numpy(), rot_mat_2.detach().cpu().numpy()
                 
-                robot_1_desired_pos = desired_position[:3]
-                robot_2_desired_pos = desired_position[3:]
 
-                # max_1, max_2 = max(abs(robot_1_desired_pos)), max(abs(robot_2_desired_pos))
-                # limit = 0.05
-                # if max_1 >= limit:
-                #     robot_1_desired_pos *= (limit/max_1)
-                # if max_2 >= limit:
-                #     robot_2_desired_pos *= (limit/max_2)                
-
-                print("from model:", robot_1_desired_pos, robot_2_desired_pos)    
-                print("ground truth: ", goal_pos_1, goal_pos_2)  
-
-                tvc_behavior_1 = TaskVelocityControl(robot_1_desired_pos, robot_1, sim_params.dt, 3, vel_limits=vel_limits, error_threshold = 2e-3, second_robot=False)
-                tvc_behavior_2 = TaskVelocityControl(robot_2_desired_pos, robot_2, sim_params.dt, 3, vel_limits=vel_limits, error_threshold = 2e-3)
-          
-            else:               
-                with torch.no_grad():
-
-                    pos, rot_mat_1, rot_mat_2 = model(current_pc_tensor, goal_pc_tensor) 
-                    pos *= 0.001
-                    pos, rot_mat_1, rot_mat_2 = pos.detach().cpu().numpy(), rot_mat_1.detach().cpu().numpy(), rot_mat_2.detach().cpu().numpy()
-                    
-
-                h = np.array(extents[1][1])-np.array(extents[0][1])    # delta_y 
-                max_x = max_y = max_z = h * 0.8
+            if args.prim_name in ["box", "cylinder"]:
+                max_x = max_y = max_z = h * 0.5 * 0.8
                 max_x *= 3/4 
-                max_y *= 3/4 * 2/3 * 1/2
+                max_y *= 3/4 * 1/2 * 2/3
                 max_z *= 3/4
-                    
-                    
-                    
-                rospy.logerr(f"max xyz: {max_x}, {max_y}, {max_z}")                
+                
 
-                if random_bool:
-                    pos[0][2] = max(max_z/3, pos[0][2])  
-                    pos[0][5] = max(max_z/3, pos[0][5])  
-                    pos[0][1] = min(max_y, pos[0][1])
-                    pos[0][4] = min(max_y, pos[0][4])
-                    
-                    random_bool = False         
+            elif args.prim_name == "hemis":    
+                ee_ratio = (ee_ratio_1 + ee_ratio_2) / 2 
+                # print("ee_ratio:", ee_ratio)
+                ee_ratio_val = [0.5, 0.85]
+                max_val = np.array([object_length/2 * 3/4, r/0.2 * 0.08])
+                f = interpolate.interp1d(ee_ratio_val, max_val, fill_value='extrapolate') 
+                max_x = f(ee_ratio)
+                max_y, max_z = deepcopy(max_x), deepcopy(max_x)
+                print("computed max:", max_x, max_y, max_z)
+                max_z *= 3/4 
+                max_y *= 1/2 * 2/3 
+                
+                
+            rospy.logerr(f"max xyz: {max_x}, {max_y}, {max_z}")                
+
+            if random_bool:
+                pos[0][2] = max(max_z/3, pos[0][2])  
+                pos[0][5] = max(max_z/3, pos[0][5])  
+                pos[0][1] = min(max_y, pos[0][1])
+                pos[0][4] = min(max_y, pos[0][4])
+                
+                random_bool = False         
+        
+            temp1 = np.eye(4) 
+            temp1[:3,:3] = rot_mat_1
+            eulers_1 = transformations.euler_from_matrix(temp1)
+            new_eulers_1 = list(np.clip(list(eulers_1),-np.pi/6,np.pi/6))
+            rot_mat_1 = transformations.euler_matrix(*new_eulers_1)[:3,:3]
             
-                temp1 = np.eye(4) 
-                temp1[:3,:3] = rot_mat_1
-                eulers_1 = transformations.euler_from_matrix(temp1)
-                # new_eulers_1 = list(np.clip(list(eulers_1),-np.pi/6,np.pi/6))
-                
-                threshold = np.array([np.pi/6, np.pi/60, np.pi/6])
-                new_eulers_1 = list(np.clip(list(eulers_1), -threshold, threshold))
-                
-                rot_mat_1 = transformations.euler_matrix(*new_eulers_1)[:3,:3]
-                
-                temp2 = np.eye(4) 
-                temp2[:3,:3] = rot_mat_2
-                eulers_2 = transformations.euler_from_matrix(temp2)
-                # new_eulers_2 = list(np.clip(list(eulers_2),-np.pi/6,np.pi/6))
-                
-                new_eulers_2 = list(np.clip(list(eulers_2), -threshold, threshold))
-                rot_mat_2 = transformations.euler_matrix(*new_eulers_2)[:3,:3]            
+            temp2 = np.eye(4) 
+            temp2[:3,:3] = rot_mat_2
+            eulers_2 = transformations.euler_from_matrix(temp2)
+            new_eulers_2 = list(np.clip(list(eulers_2),-np.pi/6,np.pi/6))
+            rot_mat_2 = transformations.euler_matrix(*new_eulers_2)[:3,:3]            
 
-                # print(pos[0])
-                desired_pos_1 = (pos[0][:3] + init_pose_1[:3,3]).flatten()
-                desired_rot_1 = rot_mat_1 @ init_pose_1[:3,:3]
-                desired_pos_2 = (pos[0][3:] + init_pose_2[:3,3]).flatten()
-                desired_rot_2 = rot_mat_2 @ init_pose_2[:3,:3]
+            # print(pos[0])
+            desired_pos_1 = (pos[0][:3] + init_pose_1[:3,3]).flatten()
+            desired_rot_1 = rot_mat_1 @ init_pose_1[:3,:3]
+            desired_pos_2 = (pos[0][3:] + init_pose_2[:3,3]).flatten()
+            desired_rot_2 = rot_mat_2 @ init_pose_2[:3,:3]
 
-                tvc_behavior_1 = TaskVelocityControl2([*desired_pos_1, desired_rot_1], robot_1, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
-                                                    pos_threshold = 2e-3, ori_threshold=5e-2)
-                tvc_behavior_2 = TaskVelocityControl2([*desired_pos_2, desired_rot_2], robot_2, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
-                                                    pos_threshold = 2e-3, ori_threshold=5e-2)
-                
-                temp1 = np.eye(4)
-                temp1[:3,:3] = rot_mat_1
-                temp2 = np.eye(4)
-                temp2[:3,:3] = goal_rot_1    
-                print("========ROBOT 1=========")        
-                print("pos, rot_mat:", pos, transformations.euler_from_matrix(temp1))
-                print("goal_pos, goal_rot:", goal_pos_1, transformations.euler_from_matrix(temp2)) 
-                print("\n")
+            tvc_behavior_1 = TaskVelocityControl2([*desired_pos_1, desired_rot_1], robot_1, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
+                                                pos_threshold = 2e-3, ori_threshold=5e-2)
+            tvc_behavior_2 = TaskVelocityControl2([*desired_pos_2, desired_rot_2], robot_2, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
+                                                pos_threshold = 2e-3, ori_threshold=5e-2)
+            
+            temp1 = np.eye(4)
+            temp1[:3,:3] = rot_mat_1
+            temp2 = np.eye(4)
+            temp2[:3,:3] = goal_rot_1    
+            print("========ROBOT 1=========")        
+            print("pos, rot_mat:", pos, transformations.euler_from_matrix(temp1))
+            print("goal_pos, goal_rot:", goal_pos_1, transformations.euler_from_matrix(temp2)) 
+            print("\n")
 
-                # temp1 = np.eye(4)
-                temp1[:3,:3] = rot_mat_2
-                # temp2 = np.eye(4)
-                temp2[:3,:3] = goal_rot_2    
-                print("========ROBOT 2=========")        
-                print("pos, rot_mat:", pos, transformations.euler_from_matrix(temp1))
-                print("goal_pos, goal_rot:", goal_pos_2, transformations.euler_from_matrix(temp2)) 
-                print("\n")
+            # temp1 = np.eye(4)
+            temp1[:3,:3] = rot_mat_2
+            # temp2 = np.eye(4)
+            temp2[:3,:3] = goal_rot_2    
+            print("========ROBOT 2=========")        
+            print("pos, rot_mat:", pos, transformations.euler_from_matrix(temp1))
+            print("goal_pos, goal_rot:", goal_pos_2, transformations.euler_from_matrix(temp2)) 
+            print("\n")
 
             closed_loop_start_time = deepcopy(gym.get_sim_time(sim))
 
@@ -993,23 +1022,24 @@ if __name__ == "__main__":
                 else:
                     action_1 = tvc_behavior_1.get_action()  
                     action_2 = tvc_behavior_2.get_action()  
+                    
+                    
                     if action_1 is None or action_2 is None or gym.get_sim_time(sim) - closed_loop_start_time >= 3:   
                         _,init_pose_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
                         init_eulers_1 = transformations.euler_from_matrix(init_pose_1)
 
                         _,init_pose_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
                         init_eulers_2 = transformations.euler_from_matrix(init_pose_2)    
-                        state = "get shape servo plan"    
+                        state = "get shape servo plan"   
+                         
+                        
                     else:
-                        gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position()/2)
-                        gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position()/2)
+                        gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position())
+                        gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position())
 
                     # Terminal conditions
-                             
-                    if no_rot:
-                        converge = all(abs(desired_position) <= 0.005)      
-                    else:  
-                        converge = all(abs(pos.squeeze()) <= 0.006) 
+                                     
+                    converge = all(abs(pos.squeeze()) <= 0.006) 
                     
                     if converge or chamfer_dist < min_chamfer_dist:
                         
@@ -1030,13 +1060,12 @@ if __name__ == "__main__":
 
                         state = "reset" 
 
-
+        # print(f"step count: {step_count}")
 
         if state == "reset":   
 
-            # coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
             # pcd.paint_uniform_color([0,0,0])
-            # open3d.visualization.draw_geometries([pcd, pcd_goal, coor.translate((0,-0.5,0))])
+            # open3d.visualization.draw_geometries([pcd, pcd_goal])
 
             rospy.loginfo("**Current state: " + state)
             frame_count = 0
@@ -1091,11 +1120,11 @@ if __name__ == "__main__":
         if  goal_count >= max_goal_count:                    
             all_done = True 
            
-
-            # final_data = {"node": final_node_distances, "chamfer": final_chamfer_distances, 
-            #               "num_nodes": full_pc_goal.shape[0], "step_count": plan_count-1}
-            # with open(os.path.join(chamfer_recording_path, f"{args.obj_name}_{args.obj_idx}.pickle"), 'wb') as handle:
-            #     pickle.dump(final_data, handle, protocol=pickle.HIGHEST_PROTOCOL) 
+            rospy.logerr(f"final step count: {step_count-1}")
+            final_data = {"node": final_node_distances, "chamfer": final_chamfer_distances, 
+                          "num_nodes": full_pc_goal.shape[0], "step_count": step_count-1}
+            with open(os.path.join(chamfer_recording_path, args.obj_name + ".pickle"), 'wb') as handle:
+                pickle.dump(final_data, handle, protocol=pickle.HIGHEST_PROTOCOL) 
 
 
         # step rendering

@@ -162,12 +162,12 @@ for (prim_name, stiffness, inside) in list(product(prim_names, stiffnesses, insi
         if metric == "node":
             for res_avg in chamfer_avg_results:
                 filtered_results += list(res_avg[filtered_idxs]) 
-                break
+                break   # only add results from the official version of DeformerNet (dense predictor - True - True)
 
         elif metric == "chamfer":
             for res in chamfer_results:
                 filtered_results += list(res[filtered_idxs]) 
-                break
+                break   # only add results from the official version of DeformerNet (dense predictor - True - True)
     
     
     object_category += 1*[f"{prim_name} {stiffness}"]*filtered_idxs.shape[0] + 1*[f"combined {stiffness}"]*filtered_idxs.shape[0]

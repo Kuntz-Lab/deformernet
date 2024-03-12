@@ -5,7 +5,7 @@ from camera_utils import add_frames
 # img_dir = "/home/baothach/shape_servo_data/tissue_wrap/visualization/3" 
 # img_dir = "/home/baothach/shape_servo_data/tissue_wrap/visualization/final_TRO_vis"
 # img_dir = "/home/baothach/shape_servo_data/goal_generation/tissue_wrap_multi_objects/evaluate/visualization/pointconv_1000/run2"
-img_dir = "/home/baothach/shape_servo_data/tanner/evaluate/visualization/run1"
+img_dir = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/visualization/recordings/chicken_breast/sample_sequence"
 
 os.chdir(img_dir)
 
@@ -17,5 +17,5 @@ os.chdir(img_dir)
 # # add_frames(img_dir, source_frame=32, num_new_frames=20)
 # os.system("ffmpeg -framerate 10 -i img%03d.png -pix_fmt yuv420p tissue_wrap_sim_goal_gen.mp4")
 
-# add_frames(img_dir, source_frame=291, num_new_frames=40)
-os.system("ffmpeg -framerate 20 -i img%03d.png -pix_fmt yuv420p retraction_kidney_sim_goal_gen.mp4")
+# add_frames(img_dir, source_frame=212, num_new_frames=40) # num_new_frames=20, 40
+os.system("ffmpeg -framerate 20 -i img%03d.png -pix_fmt yuv420p chicken_breast_50.mp4")    # -framerate 10 20

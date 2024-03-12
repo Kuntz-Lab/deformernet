@@ -24,7 +24,7 @@ def get_results(prim_name, stiffness, inside, range_data, unseen_obj_name=None):
         if unseen_obj_name is None:
             file_name = os.path.join(main_path, "chamfer_results", object_category, distribution_keyword, f"{prim_name}_{str(i)}.pickle")
         else:
-            unseen_objects_main_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/evaluate/chamfer_results/model_combined"
+            unseen_objects_main_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/evaluate/chamfer_results_2/model_combined"
             file_name = os.path.join(unseen_objects_main_path, unseen_obj_name, f"{unseen_obj_name}_{i}.pickle")
 
         if os.path.isfile(file_name):
@@ -109,10 +109,10 @@ for unseen_obj_name in unseen_objects_list:
     res, res_avg = get_results(prim_name, stiffness, inside, range_data=range_data, unseen_obj_name=unseen_obj_name)
     filtered_idxs = filtering_condition(res)
     
-    filtered_idxs_2 = np.where(res_avg < 2.5)[0]
+    filtered_idxs_2 = np.where(res_avg < 3)[0]
     filtered_idxs = np.array(list(set.intersection(set(filtered_idxs), set(filtered_idxs_2))))
     
-    # print(filtered_idxs)
+    print(f"Unseen objects len(filtered_idxs): {len(filtered_idxs)}")
 
     if metric == "node":
         new_filtered_result = list(res_avg[filtered_idxs]) 
@@ -130,7 +130,8 @@ df["chamfer"] = filtered_results
 df["object category"] = object_category
 # df["Evaluation Metric"] = metrics
 
-plt.figure(figsize=(14, 10), dpi=80)
+# plt.figure(figsize=(14, 10), dpi=80)
+plt.figure(figsize=(14, 8), dpi=80)
 
 # ax=sns.boxplot(y="chamfer",x="object category", data=df, whis=1000, showfliers = True)
 
@@ -163,6 +164,7 @@ elif metric == "chamfer":
 
 plt.subplots_adjust(bottom=0.2) # Make x axis label (Object) fit
 
+ax.get_xticklabels()[-1].set_text("chicken breast")
 ax.set_xticklabels(ax.get_xticklabels(),rotation=30)
 
 # handles, labels = ax.get_legend_handles_labels()
@@ -188,10 +190,11 @@ for i in range(-3 - len(unseen_objects_list), 0 - len(unseen_objects_list)):
 # for i in [-2]:
 #     ax.artists[i].set_facecolor((0, 0.7, 0))
 for i in [-1]:
-    ax.artists[i].set_facecolor((0.7, 0, 0.7))    
+    ax.artists[i].set_facecolor((0.8, 0, 0.8))    
+    ax.artists[i].set_hatch("///")
     
 # ax.get_legend().remove()
-plt.savefig(f'/home/baothach/Downloads/bimanual_{metric}_unseen_obj.png', bbox_inches='tight', pad_inches=0.0)
+plt.savefig(f'/home/baothach/Downloads/bimanual_{metric}.png', bbox_inches='tight', pad_inches=0.05)
     
 plt.show()
 

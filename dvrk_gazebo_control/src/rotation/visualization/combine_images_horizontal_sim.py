@@ -9,11 +9,11 @@ from itertools import product
 
 from PIL import Image
 
-key_frame_path = "/home/baothach/shape_servo_data/rotation_extension/visualization/TRO_sim_results_bimanual/"
+key_frame_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/visualization/"
 processed_image_path = os.path.join(key_frame_path, "processed_images")
 os.makedirs(processed_image_path, exist_ok=True)
 
-category = "cylinder_vis_1"
+category = "chicken_vis_1"
 key_frame_path = os.path.join(key_frame_path, "keyframes", category)
 
 
@@ -35,4 +35,4 @@ for im in images:
   new_im.paste(im, (x_offset,0))
   x_offset += im.size[0]
 
-new_im.save(os.path.join(processed_image_path, "bimanual_sim_sequence.png"))
+new_im.save(os.path.join(processed_image_path, "bimanual_sim_chicken_sequence.png"))

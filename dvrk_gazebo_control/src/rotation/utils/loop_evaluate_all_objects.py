@@ -10,8 +10,11 @@ os.chdir(pkg_path)
 def run_evaluate_loop(headless, prim_name, stiffness, inside, use_rot, use_mp_input, num_obj=10):
     for i in range(0, num_obj):
 
-        os.system(f"rosrun dvrk_gazebo_control evaluate_all_objects_w_predicted_mp.py --flex --headless {str(headless)} --prim_name {prim_name}\
+        # os.system(f"rosrun dvrk_gazebo_control evaluate_all_objects_w_predicted_mp.py --flex --headless {str(headless)} --prim_name {prim_name}\
+        #             --stiffness {stiffness} --obj_name {i} --inside {str(inside)} --use_rot {str(use_rot)} --use_mp_input {str(use_mp_input)} --mp_method {mp_method}")
+        os.system(f"rosrun dvrk_gazebo_control evaluate_all_objects_w_predicted_mp_count_steps.py --flex --headless {str(headless)} --prim_name {prim_name}\
                     --stiffness {stiffness} --obj_name {i} --inside {str(inside)} --use_rot {str(use_rot)} --use_mp_input {str(use_mp_input)} --mp_method {mp_method}")
+
 
 def run_collect_goals_loop(headless, prim_name, stiffness, inside, num_obj=10):
     for i in range(0, num_obj):
@@ -37,15 +40,15 @@ num_obj = 10 #10
 start_time = timeit.default_timer() 
 
 ### Collect goals
-prim_names = ["hemis"] #["box", "cylinder", "hemis"]
-stiffnesses = ["1k"] #["1k", "5k", "10k"]  "5k", "10k", "1k"
+prim_names = ["box", "cylinder", "hemis"] #["box", "cylinder", "hemis"]
+stiffnesses = ["10k"] #["1k", "5k", "10k"] 
 
 
-for (prim_name, stiffness) in list(product(prim_names, stiffnesses)):
-    obj_type = f"{prim_name}_{stiffness}"
+# for (prim_name, stiffness) in list(product(prim_names, stiffnesses)):
+#     obj_type = f"{prim_name}_{stiffness}"
 
-    run_collect_goals_loop(headless, prim_name, stiffness, inside=True, num_obj=num_obj)
-    # run_collect_goals_loop(headless, prim_name, obj_type, inside=False, num_obj=num_obj)
+#     run_collect_goals_loop(headless, prim_name, stiffness, inside=True, num_obj=num_obj)
+#     # run_collect_goals_loop(headless, prim_name, obj_type, inside=False, num_obj=num_obj)
 
 
 
@@ -75,10 +78,6 @@ for (prim_name, stiffness, inside) in list(product(prim_names, stiffnesses, insi
         use_mp_input = True
         run_evaluate_loop(headless, prim_name, stiffness, inside, use_rot, use_mp_input, num_obj=num_obj)            
         
-
-
-
-
 
 
 print(f"DONE! You burned {(timeit.default_timer() - start_time)/3600} trees" )

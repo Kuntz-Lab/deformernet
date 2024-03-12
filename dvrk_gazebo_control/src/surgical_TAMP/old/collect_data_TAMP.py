@@ -12,33 +12,25 @@ import numpy as np
 from isaacgym import gymapi
 from isaacgym import gymtorch
 from isaacgym import gymutil
-from copy import copy, deepcopy
+from copy import deepcopy
 import rospy
-# from dvrk_gazebo_control.srv import *
-# from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped, Pose
 from GraspDataCollectionClient import GraspDataCollectionClient
 import open3d
 from utils import open3d_ros_helper as orh
 from utils import o3dpc_to_GraspObject_msg as o3dpc_GO
-# #import pptk
+#import pptk
 from utils.isaac_utils import isaac_format_pose_to_PoseStamped as to_PoseStamped
 from utils.isaac_utils import fix_object_frame, get_pykdl_client
-# from utils.record_data_h5 import RecordGraspData_sparse
-import pickle5 as pickle
-# from ShapeServo import *
-# from sklearn.decomposition import PCA
+import pickle
 import timeit
 from copy import deepcopy
-# from PIL import Image
+from scipy import interpolate
 
 from core import Robot
 from behaviors import MoveToPose, TaskVelocityControl2
 import transformations
-from scipy import interpolate
 
-
-
-from utils.miscellaneous_utils import down_sampling, get_extents_object
 
 ROBOT_Z_OFFSET = 0.25
 # angle_kuka_2 = -0.4
@@ -62,11 +54,6 @@ def init():
         davinci_dof_states['pos'][8] = 1.5
         davinci_dof_states['pos'][9] = 0.8
         gym.set_actor_dof_states(envs[i], kuka_handles_2[i], davinci_dof_states, gymapi.STATE_POS)
-
-def down_sampling(pc, num_pts=1024):
-    farthest_indices,_ = farthest_point_sampling(pc, num_pts)
-    pc = pc[farthest_indices.squeeze()]  
-    return pc
 
 def get_point_cloud():
     gym.refresh_particle_state_tensor(sim)
@@ -147,35 +134,23 @@ if __name__ == "__main__":
         custom_parameters=[
             {"name": "--num_envs", "type": int, "default": 1, "help": "Number of environments to create"},
             {"name": "--num_objects", "type": int, "default": 10, "help": "Number of objects in the bin"},
-            {"name": "--obj_name", "type": str, "default": None, "help": "chicken_breast, meat, kidney, etc."},
-            {"name": "--obj_idx", "type": int, "default": None, "help": "Index of the object. From 0 to 99."},
+            {"name": "--prim_name", "type": str, "default": "box", "help": "Select primitive shape. Options: box, cylinder, hemis"},
+            {"name": "--stiffness", "type": str, "default": "1k", "help": "Select object stiffness. Options: 1k, 5k, 10k"},
+            {"name": "--obj_name", "type": int, "default": 0, "help": "select variations of a primitive shape"},
             {"name": "--headless", "type": str, "default": "False", "help": "headless mode"}])
 
     num_envs = args.num_envs
     
-
-    
     args.headless = args.headless == "True"
-
-
-
-    main_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/evaluate"
-    objects_path = "/home/baothach/sim_data/Custom/Custom_objects/random_stuff"
-    object_meshes_path = os.path.join(objects_path, "mesh")
-    
-    goal_recording_path = os.path.join(main_path, "goal_data_2", args.obj_name)
-    os.makedirs(goal_recording_path, exist_ok=True)    
-    
-    if args.obj_idx is None:
-        args.obj_idx = len(os.listdir(goal_recording_path))
-
+    args.obj_name = f"{args.prim_name}_{args.obj_name}"
+    object_category = f"{args.prim_name}_{args.stiffness}"
 
     # configure sim
     sim_type = gymapi.SIM_FLEX
     sim_params = gymapi.SimParams()
     sim_params.up_axis = gymapi.UP_AXIS_Z
-    # sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
-    sim_params.gravity = gymapi.Vec3(0.0, 0.0, -10)
+    sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
+    # sim_params.gravity = gymapi.Vec3(0.0, 0.0, 0)
     if sim_type is gymapi.SIM_FLEX:
         sim_params.substeps = 4
         # print("=================sim_params.dt:", sim_params.dt)
@@ -193,11 +168,20 @@ if __name__ == "__main__":
     sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, sim_params)
 
     # Get primitive shape dictionary to know the dimension of the object   
-    object_meshes_path = os.path.join(objects_path, "mesh")
+    object_meshes_path = "/home/baothach/shape_servo_data/TAMP/object_data/mesh"  
+    with open(os.path.join(object_meshes_path, "primitive_dict.pickle"), 'rb') as handle:
+        data = pickle.load(handle)    
+    h = data[args.obj_name]["height"]
+    w = data[args.obj_name]["width"]
+    thickness = data[args.obj_name]["thickness"]
+    base_thickness = 0.0015 #0.005
 
-    # with open(os.path.join(object_meshes_path, args.obj_name + ".pickle"), 'rb') as handle:
-    #     data = pickle.load(handle)    
-    # extents = data["extents"]
+    soft_pose = gymapi.Transform()
+    z_coor = 2*(base_thickness*0.5 + thickness/2*0.5)
+    soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, z_coor)
+    soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
+    soft_thickness = 0.001#0.0005    # important to add some thickness to the soft body to avoid interpenetrations
+    
 
     # add ground plane
     plane_params = gymapi.PlaneParams()
@@ -241,16 +225,25 @@ if __name__ == "__main__":
     print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
-
-    asset_root = os.path.join(objects_path, "urdf", args.obj_name)
-    soft_asset_file = f"{args.obj_name}_{args.obj_idx}.urdf" 
-    tet_file = os.path.join(object_meshes_path, f"{args.obj_name}.tet")
-    extents = get_extents_object(tet_file)
+    asset_root = "/home/baothach/shape_servo_data/TAMP/object_data/urdf"
+    soft_asset_file = args.obj_name + ".urdf"    
 
 
-    soft_pose = gymapi.Transform()
-    soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, -extents[0][2] + 0.001)
-    soft_thickness = 0.001#0.0005    # important to add some thickness to the soft body to avoid interpenetrations
+    # soft_pose = gymapi.Transform()
+    
+    # # soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, thickness/2*0.7)
+    # if args.prim_name == "box": 
+    #     soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, thickness/2*0.5)
+    #     soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
+    # elif args.prim_name == "cylinder": 
+    #     soft_pose.p = gymapi.Vec3(0, -two_robot_offset/2, r/2.0)
+    #     soft_pose.r = gymapi.Quat(0.7071068, 0, 0, 0.7071068)
+    # elif args.prim_name == "hemis":
+    #     soft_pose = gymapi.Transform()
+    #     soft_pose.p = gymapi.Vec3(0, -two_robot_offset/2, -o/2.)
+
+
+    # soft_thickness = 0.001 #0.0005#0.0005    # important to add some thickness to the soft body to avoid interpenetrations
 
 
 
@@ -300,7 +293,7 @@ if __name__ == "__main__":
         
 
         # add soft obj        
-        env_obj = env
+        # env_obj = env
         env_obj = gym.create_env(sim, env_lower, env_upper, num_per_row)
         envs_obj.append(env_obj)        
         
@@ -342,6 +335,12 @@ if __name__ == "__main__":
     cam_props = gymapi.CameraProperties()
     cam_props.width = cam_width
     cam_props.height = cam_height
+    # cam_positions.append(gymapi.Vec3(0.12, -0.55, 0.15))
+    # cam_positions.append(gymapi.Vec3(0.1, -0.5-(two_robot_offset/2 - 0.42), 0.2))
+    # cam_targets.append(gymapi.Vec3(0.0, -0.45-(two_robot_offset/2 - 0.42), 0.00))
+
+    # cam_positions.append(gymapi.Vec3(0.17, -0.62, 0.2))
+    # cam_targets.append(gymapi.Vec3(0.0, 0.40-two_robot_offset, 0.01))
     cam_positions.append(gymapi.Vec3(0.17, -0.62-(two_robot_offset/2 - 0.42), 0.2))
     cam_targets.append(gymapi.Vec3(0.0, 0.40-0.86-(two_robot_offset/2 - 0.42), 0.01))  
 
@@ -371,26 +370,28 @@ if __name__ == "__main__":
     all_done = False
     state = "home"
     
-    max_goals = 100
-    if args.obj_idx >= 100:
-        all_done = True
+    
+    data_recording_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual/multi_{object_category}Pa/data"
 
-
+    mp_data_recording_path = f"/home/baothach/shape_servo_data/manipulation_points/bimanual/multi_{object_category}Pa/mp_data"
+ 
+    os.makedirs(data_recording_path, exist_ok=True)
+    os.makedirs(mp_data_recording_path, exist_ok=True)
 
     terminate_count = 0
     sample_count = 0
     frame_count = 0
     group_count = 0
-    data_point_count = 0
-
-    # max_group_count = 150000
-    max_sample_count = 1
-    max_data_point_count = 1
+    data_point_count = len(os.listdir(data_recording_path))
+    mp_data_point_count = len(os.listdir(mp_data_recording_path))
+    max_group_count = 150000
+    max_sample_count = 2
+    max_data_point_count = 12345678     #15000
     # if args.obj_name == 'box_64':
     #     max_data_point_per_variation = 9600
     # else:
 
-    # max_data_point_per_variation = data_point_count + 150
+    max_data_point_per_variation = data_point_count + 150
 
 
     pc_on_trajectory = []
@@ -402,7 +403,6 @@ if __name__ == "__main__":
     switch = True
     total_computation_time = 0
     data = []
-
 
     dc_client = GraspDataCollectionClient()
     
@@ -430,9 +430,9 @@ if __name__ == "__main__":
 
         if state == "home" :   
             frame_count += 1
-            gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka", "psm_main_insertion_joint"), 0.24)    
-            gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka2", "psm_main_insertion_joint"), 0.24)             
-            if frame_count == 5:
+            gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka", "psm_main_insertion_joint"), 0.24)
+            gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka2", "psm_main_insertion_joint"), 0.24)            
+            if frame_count == 10:
                 rospy.loginfo("**Current state: " + state + ", current sample count: " + str(sample_count))
                 
 
@@ -449,9 +449,16 @@ if __name__ == "__main__":
                     open3d.io.write_point_cloud("/home/baothach/shape_servo_data/multi_grasps/1.pcd", pcd) # save_grasp_visual_data , point cloud of the object
                     pc_ros_msg = dc_client.seg_obj_from_file_client(pcd_file_path = "/home/baothach/shape_servo_data/multi_grasps/1.pcd", align_obj_frame = False).obj
                     pc_ros_msg = fix_object_frame(pc_ros_msg)
+
+                    # temp_state = gym.get_actor_rigid_body_states(envs_obj[i], soft_actor, gymapi.STATE_POS)                
+                    # temp_state['pose']['p']['x'] += 0.1                
+                    # gym.set_actor_rigid_body_states(envs_obj[i], soft_actor, temp_state, gymapi.STATE_ALL) 
+
+
                 
                 state = "generate preshape"                
                 frame_count = 0              
+
 
 
         if state == "generate preshape":                   
@@ -466,11 +473,16 @@ if __name__ == "__main__":
             cartesian_goal_1 = deepcopy(preshape_response.palm_goal_pose_world[0].pose)        
 
             
-            target_pose_1 = [cartesian_goal_1.position.x, cartesian_goal_1.position.y + two_robot_offset, cartesian_goal_1.position.z-ROBOT_Z_OFFSET,
-                            0, 0.707107, 0.707107, 0]
-            target_pose_2 = [-cartesian_goal_2.position.x, -cartesian_goal_2.position.y, cartesian_goal_2.position.z-ROBOT_Z_OFFSET,
-                            0, 0.707107, 0.707107, 0]
- 
+            if args.prim_name in ["box", "cylinder"]:
+                target_pose_1 = [cartesian_goal_1.position.x, cartesian_goal_1.position.y + two_robot_offset, cartesian_goal_1.position.z-ROBOT_Z_OFFSET,
+                                0, 0.707107, 0.707107, 0]
+                target_pose_2 = [-cartesian_goal_2.position.x, -cartesian_goal_2.position.y, cartesian_goal_2.position.z-ROBOT_Z_OFFSET,
+                                0, 0.707107, 0.707107, 0]
+            elif args.prim_name == "hemis":  
+                target_pose_1 = [cartesian_goal_1.position.x, cartesian_goal_1.position.y + two_robot_offset, cartesian_goal_1.position.z-ROBOT_Z_OFFSET-0.01,
+                                0, 0.707107, 0.707107, 0]
+                target_pose_2 = [-cartesian_goal_2.position.x, -cartesian_goal_2.position.y, cartesian_goal_2.position.z-ROBOT_Z_OFFSET-0.01,
+                                0, 0.707107, 0.707107, 0]      
 
             mtp_behavior_1 = MoveToPose(target_pose_1, robot_1, sim_params.dt, 1)   
             mtp_behavior_2 = MoveToPose(target_pose_2, robot_2, sim_params.dt, 1)         
@@ -486,7 +498,13 @@ if __name__ == "__main__":
             pc_init = get_partial_point_cloud(i)
             full_pc_init = get_point_cloud()
 
-
+            ys = get_point_cloud()[:,1]
+            object_length = abs(max(ys)-min(ys))
+            print("object_length:", object_length)
+            ee_loc_on_obj = abs(cartesian_goal_2.position.y-soft_pose.p.y) + object_length/2
+            print("where ee:", ee_loc_on_obj)  # 0.85 and 0.5
+            ee_ratio = ee_loc_on_obj/object_length
+            print("ee_ratio:", ee_ratio)
 
 
         if state == "move to preshape":         
@@ -531,11 +549,6 @@ if __name__ == "__main__":
                 gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka", "psm_tool_gripper2_joint"), g_2_pos)                     
                 gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka2", "psm_tool_gripper1_joint"), g_1_pos)
                 gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka2", "psm_tool_gripper2_joint"), g_2_pos)         
-
-                gym.refresh_particle_state_tensor(sim)
-                saved_object_contact_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
-                saved_robot_state_2 = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
-                saved_robot_state_1 = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles[i], gymapi.STATE_ALL))
         
                 _,init_pose_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
                 init_eulers_1 = transformations.euler_from_matrix(init_pose_1)
@@ -552,54 +565,55 @@ if __name__ == "__main__":
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state) 
             
-            action_scale = 0.8
-            # max_x, max_y, max_z = tuple(list((np.array(extents[1])-np.array(extents[0])) * action_scale))
-                
-            h = np.array(extents[1][1])-np.array(extents[0][1])    # delta_y 
-            max_x = max_y = max_z = h * 0.8
-            max_x *= 3/4 
-            max_y *= 3/4 * 2/3 * 1/2
-            max_z *= 3/4
-
-
-            rospy.logerr(f"max xyz: {max_x}, {max_y}, {max_z}")
-
-
-
-            delta_x_1 = np.random.uniform(low = -max_x, high = max_x)
-            delta_y_1 = np.random.uniform(low = 0.0, high = max_y)
-            delta_z_1 = np.random.uniform(low = max_z/2, high = max_z)
-            # delta_z_1 = np.random.uniform(low = 0.00, high = max_z)     
-            # delta_alpha_1 = np.random.uniform(low = -np.pi/3, high = np.pi/3)
-            # delta_beta_1 = np.random.uniform(low = -np.pi/3, high = np.pi/3) 
-            # delta_gamma_1 = np.random.uniform(low = -np.pi/2, high = np.pi/2)
-            delta_alpha_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
-            delta_beta_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60) 
-            delta_gamma_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
-
-            if delta_x_1 >= 0:
-                delta_x_2 = np.random.uniform(low = -max_x, high = 0)
+            if args.prim_name in ["box", "cylinder"]:
+                max_x = max_y = max_z = h * 0.5 * 0.8
+                max_x *= 3/4
+                max_y *= 3/4
+                max_z *= 3/4
+            elif args.prim_name == "hemis":    
+                # print("ee_ratio:", ee_ratio)
+                ee_ratio_val = [0.5, 0.85]
+                max_val = np.array([object_length/2 * 3/4, r/0.2 * 0.08])
+                f = interpolate.interp1d(ee_ratio_val, max_val, fill_value='extrapolate') 
+                max_x = f(ee_ratio)
+                max_y, max_z = deepcopy(max_x), deepcopy(max_x)
+                print("computed max:", max_x, max_y, max_z)
+                max_z *= 3/4                
             else:
-                delta_x_2 = np.random.uniform(low = 0, high = max_x)
-                
-            delta_y_2 = np.random.uniform(low = 0.0, high = max_y)
-            delta_z_2 = np.random.uniform(low = max_z/2, high = max_z)
-            # delta_z_2 = np.random.uniform(low = 0.00, high = max_z)  
-            # delta_alpha_2 = np.random.uniform(low = -np.pi/3, high = np.pi/3)
-            # delta_beta_2 = np.random.uniform(low = -np.pi/3, high = np.pi/3) 
-            # delta_gamma_2 = np.random.uniform(low = -np.pi/2, high = np.pi/2)
-            delta_alpha_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
-            delta_beta_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60) 
-            delta_gamma_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
-            
-            # delta_alpha_1, delta_beta_1, delta_gamma_1 = np.pi/300000, np.pi/300000, np.pi/300000
-            # delta_alpha_2, delta_beta_2, delta_gamma_2 = np.pi/300000, np.pi/300000, np.pi/300000
-            # delta_x_1, delta_y_1, delta_z_1 = -0.08853913565351289, 0.025210199936296678, 0.07535263796573005
-            # delta_x_2, delta_y_2, delta_z_2 = 0.09302304013590829, 0.05291089165645365, 0.0908353712106848
-            
-            
+                raise Exception("Wrong object category")
 
-            print("Max xyz:", max_x, max_y, max_z)
+            if True: #args.prim_name in ["box", "cylinder"]:
+                delta_x_1 = 0   #np.random.uniform(low = -max_x, high = max_x)
+                delta_y_1 = 0.00   #np.random.uniform(low = 0.0, high = max_y)
+                delta_z_1 = 0.08    #np.random.uniform(low = 0.0, high = max_z)  
+                delta_x_2 = 0   #np.random.uniform(low = -max_x, high = max_x)
+                delta_y_2 = 0.00   #np.random.uniform(low = 0.0, high = max_y)
+                delta_z_2 = 0.08    #np.random.uniform(low = 0.0, high = max_z)   
+            elif args.prim_name == "hemis":               
+                if cartesian_goal_1.position.x >= 0:
+                    delta_x_1 = -np.random.uniform(low = 0, high = max_x)
+                else:
+                    delta_x_1 = np.random.uniform(low = 0, high = max_x)
+                delta_y_1 = np.random.uniform(low = 0.0, high = max_y)
+                delta_z_1 = np.random.uniform(low = 0.0, high = max_z)  
+
+                if cartesian_goal_2.position.x >= 0:
+                    delta_x_2 = -np.random.uniform(low = 0, high = max_x)
+                else:
+                    delta_x_2 = np.random.uniform(low = 0, high = max_x)
+                delta_y_2 = np.random.uniform(low = 0.0, high = max_y)
+                delta_z_2 = np.random.uniform(low = 0.0, high = max_z)  
+            else:
+                raise Exception("Wrong object category")
+                   
+            delta_alpha_1 = 1e-5    #np.random.uniform(low = -np.pi/3, high = np.pi/3)
+            delta_beta_1 = 1e-5    #np.random.uniform(low = -np.pi/3, high = np.pi/3) 
+            delta_gamma_1 = 1e-5    #np.random.uniform(low = -np.pi/2, high = np.pi/2)
+
+            delta_alpha_2 = 1e-5    #np.random.uniform(low = -np.pi/3, high = np.pi/3)
+            delta_beta_2 = 1e-5    #np.random.uniform(low = -np.pi/3, high = np.pi/3) 
+            delta_gamma_2 = 1e-5    #np.random.uniform(low = -np.pi/2, high = np.pi/2)
+
             print("Robot 1 selects x, y, z, a, b, g:", delta_x_1, delta_y_1, delta_z_1, " | ", delta_alpha_1, delta_beta_1, delta_gamma_1) 
             print("Robot 2 selects x, y, z, a, b, g:", delta_x_2, delta_y_2, delta_z_2, " | ", delta_alpha_2, delta_beta_2, delta_gamma_2) 
 
@@ -633,13 +647,13 @@ if __name__ == "__main__":
                 group_count += 1
                 state = "reset"
 
-            rigid_contacts = gym.get_env_rigid_contacts(envs[0])
-            if len(list(rigid_contacts)) != 0:
-                for k in range(len(list(rigid_contacts))):
-                    if rigid_contacts[k]['body0'] > -1 and rigid_contacts[k]['body1'] > -1 : # ignore collision with the ground which has a value of -1
-                        state = "reset"
-                        rospy.logerr("Two robots collided !!")
-                        break
+            # rigid_contacts = gym.get_env_rigid_contacts(envs[0])
+            # if len(list(rigid_contacts)) != 0:
+            #     for k in range(len(list(rigid_contacts))):
+            #         if rigid_contacts[k]['body0'] > -1 and rigid_contacts[k]['body1'] > -1 : # ignore collision with the ground which has a value of -1
+            #             state = "reset"
+            #             rospy.logerr("Two robots collided !!")
+            #             break
 
 
             contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
@@ -651,66 +665,42 @@ if __name__ == "__main__":
                 state = "reset"
 
             else:
-                if frame_count == 0:
+                if frame_count % 15 == 0:
                     full_pc_on_trajectory.append(get_point_cloud())
                     pc_on_trajectory.append(get_partial_point_cloud(i))
-                    curr_trans_1 = get_pykdl_client(robot_1.get_arm_joint_positions())[1]
-                    curr_trans_2 = get_pykdl_client(robot_2.get_arm_joint_positions())[1]
+                    curr_trans_on_trajectory_1.append(get_pykdl_client(robot_1.get_arm_joint_positions())[1])
+                    curr_trans_on_trajectory_2.append(get_pykdl_client(robot_2.get_arm_joint_positions())[1])
                               
+                    if frame_count == 0:
+                        mp_mani_point_1 = deepcopy(gym.get_actor_rigid_body_states(robot_1.env_handle, robot_1.robot_handle, gymapi.STATE_POS)[-3])
+                        mp_mani_point_2 = deepcopy(gym.get_actor_rigid_body_states(robot_2.env_handle, robot_2.robot_handle, gymapi.STATE_POS)[-3])
+
+                    terminate_count += 1
+                    if terminate_count >= 10:
+                        print("+++ Taking too long")
+                        state = "reset"
+                        terminate_count = 0
                 frame_count += 1           
                 
                 action_1 = tvc_behavior_1.get_action()  
                 action_2 = tvc_behavior_2.get_action() 
                 # print("action_1, action_2:", action_1, action_2)
                 if (action_1 is not None) and (action_2 is not None) and gym.get_sim_time(sim) - closed_loop_start_time <= 8: 
-                    gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position()/2)
-                    gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position()/2)
+                    gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position())
+                    gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position())
 
                 else:   
                     rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
                     
-                    # gt_mp_1 = [curr_trans_1[0,3], curr_trans_1[1,3]-two_robot_offset, curr_trans_1[2,3] + ROBOT_Z_OFFSET]
-                    # gt_mp_2 = [curr_trans_2[0,3], -curr_trans_2[1,3], curr_trans_2[2,3] + ROBOT_Z_OFFSET]
-                    # # current_pc_numpy = down_sampling(get_partial_point_cloud(i))                  
-                            
-                    # pcd = open3d.geometry.PointCloud()
-                    # pcd.points = open3d.utility.Vector3dVector(full_pc_init)  
-                    # pcd.paint_uniform_color([0,0,0])
-                    # mani_point_1_sphere = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-                    # mani_point_1_sphere.paint_uniform_color([0,0,1])
-                    # # mani_point_1_sphere.translate(tuple(mani_point_1))
-                    # mani_point_1_sphere.translate(tuple(gt_mp_1))
-                    # mani_point_2_sphere = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-                    # mani_point_2_sphere.paint_uniform_color([1,0,0])
-                    # # mani_point_1_sphere.translate(tuple(mani_point_2))
-                    # mani_point_2_sphere.translate(tuple(gt_mp_2))
-                    # open3d.visualization.draw_geometries([pcd, mani_point_1_sphere, mani_point_2_sphere])             
-
-                    _, final_trans_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
-                    _, final_trans_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
-
-                                      
-                    p_1, R_1, twist_1 = tvc_behavior_1.get_transform(curr_trans_1, final_trans_1, get_twist=True)
-                    mani_point_1 = curr_trans_1
-
-                    p_2, R_2, twist_2 = tvc_behavior_2.get_transform(curr_trans_2, final_trans_2, get_twist=True)
-                    mani_point_2 = curr_trans_2
-
-                    partial_goal_pcs = (pc_init, get_partial_point_cloud(i))
-                    full_goal_pcs = (full_pc_init, get_point_cloud())     
-
-                    data = {"full pcs": full_goal_pcs, "partial pcs": partial_goal_pcs, "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
-                            "mani_point": (mani_point_1, mani_point_2), \
-                            "obj_name": args.obj_name}
-
-                    with open(os.path.join(goal_recording_path, f"{args.obj_name}_{args.obj_idx}.pickle"), 'wb') as handle:
-                        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
+                    # if sample_count == 0:
                     
-                    print("data_point_count:", data_point_count)
-                    data_point_count += 1       
+                    # pc_goal = get_partial_point_cloud(i)
+                    # full_pc_goal = get_point_cloud()
+                    # _, final_trans_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
+                    # _, final_trans_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
+                    # print("***Final x, y, z: ", final_pose["pose"]["p"]["x"], final_pose["pose"]["p"]["y"], final_pose["pose"]["p"]["z"] ) 
+ 
 
-
-    
                     frame_count = 0
                     terminate_count = 0
                     sample_count += 1
@@ -752,8 +742,17 @@ if __name__ == "__main__":
 
             state = "home"
  
- 
-        if  data_point_count >= max_data_point_count:                    
+        
+        if sample_count == max_sample_count:  
+            sample_count = 0            
+            group_count += 1
+            print("group count: ", group_count)
+            state = "reset" 
+
+
+
+        # if group_count == max_group_count or data_point_count >= max_data_point_count: 
+        if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:                    
             all_done = True 
 
         # step rendering

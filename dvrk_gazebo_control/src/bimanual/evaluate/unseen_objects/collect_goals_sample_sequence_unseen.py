@@ -163,7 +163,7 @@ if __name__ == "__main__":
     objects_path = "/home/baothach/sim_data/Custom/Custom_objects/random_stuff"
     object_meshes_path = os.path.join(objects_path, "mesh")
     
-    goal_recording_path = os.path.join(main_path, "goal_data_2", args.obj_name)
+    goal_recording_path = os.path.join(main_path, "goal_data_sample_sequence", args.obj_name)
     os.makedirs(goal_recording_path, exist_ok=True)    
     
     if args.obj_idx is None:
@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
 
     asset_root = os.path.join(objects_path, "urdf", args.obj_name)
-    soft_asset_file = f"{args.obj_name}_{args.obj_idx}.urdf" 
+    soft_asset_file = f"{args.obj_name}_{8}.urdf" 
     tet_file = os.path.join(object_meshes_path, f"{args.obj_name}.tet")
     extents = get_extents_object(tet_file)
 
@@ -566,36 +566,36 @@ if __name__ == "__main__":
 
 
 
-            delta_x_1 = np.random.uniform(low = -max_x, high = max_x)
-            delta_y_1 = np.random.uniform(low = 0.0, high = max_y)
-            delta_z_1 = np.random.uniform(low = max_z/2, high = max_z)
-            # delta_z_1 = np.random.uniform(low = 0.00, high = max_z)     
-            # delta_alpha_1 = np.random.uniform(low = -np.pi/3, high = np.pi/3)
-            # delta_beta_1 = np.random.uniform(low = -np.pi/3, high = np.pi/3) 
-            # delta_gamma_1 = np.random.uniform(low = -np.pi/2, high = np.pi/2)
-            delta_alpha_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
-            delta_beta_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60) 
-            delta_gamma_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
+            # delta_x_1 = np.random.uniform(low = -max_x, high = max_x)
+            # delta_y_1 = np.random.uniform(low = 0.0, high = max_y)
+            # delta_z_1 = np.random.uniform(low = max_z/2, high = max_z)
+            # # delta_z_1 = np.random.uniform(low = 0.00, high = max_z)     
+            # # delta_alpha_1 = np.random.uniform(low = -np.pi/3, high = np.pi/3)
+            # # delta_beta_1 = np.random.uniform(low = -np.pi/3, high = np.pi/3) 
+            # # delta_gamma_1 = np.random.uniform(low = -np.pi/2, high = np.pi/2)
+            # delta_alpha_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
+            # delta_beta_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60) 
+            # delta_gamma_1 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
 
-            if delta_x_1 >= 0:
-                delta_x_2 = np.random.uniform(low = -max_x, high = 0)
-            else:
-                delta_x_2 = np.random.uniform(low = 0, high = max_x)
+            # if delta_x_1 >= 0:
+            #     delta_x_2 = np.random.uniform(low = -max_x, high = 0)
+            # else:
+            #     delta_x_2 = np.random.uniform(low = 0, high = max_x)
                 
-            delta_y_2 = np.random.uniform(low = 0.0, high = max_y)
-            delta_z_2 = np.random.uniform(low = max_z/2, high = max_z)
-            # delta_z_2 = np.random.uniform(low = 0.00, high = max_z)  
-            # delta_alpha_2 = np.random.uniform(low = -np.pi/3, high = np.pi/3)
-            # delta_beta_2 = np.random.uniform(low = -np.pi/3, high = np.pi/3) 
-            # delta_gamma_2 = np.random.uniform(low = -np.pi/2, high = np.pi/2)
-            delta_alpha_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
-            delta_beta_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60) 
-            delta_gamma_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
+            # delta_y_2 = np.random.uniform(low = 0.0, high = max_y)
+            # delta_z_2 = np.random.uniform(low = max_z/2, high = max_z)
+            # # delta_z_2 = np.random.uniform(low = 0.00, high = max_z)  
+            # # delta_alpha_2 = np.random.uniform(low = -np.pi/3, high = np.pi/3)
+            # # delta_beta_2 = np.random.uniform(low = -np.pi/3, high = np.pi/3) 
+            # # delta_gamma_2 = np.random.uniform(low = -np.pi/2, high = np.pi/2)
+            # delta_alpha_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
+            # delta_beta_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60) 
+            # delta_gamma_2 = np.random.uniform(low = -np.pi/60, high = np.pi/60)
             
-            # delta_alpha_1, delta_beta_1, delta_gamma_1 = np.pi/300000, np.pi/300000, np.pi/300000
-            # delta_alpha_2, delta_beta_2, delta_gamma_2 = np.pi/300000, np.pi/300000, np.pi/300000
-            # delta_x_1, delta_y_1, delta_z_1 = -0.08853913565351289, 0.025210199936296678, 0.07535263796573005
-            # delta_x_2, delta_y_2, delta_z_2 = 0.09302304013590829, 0.05291089165645365, 0.0908353712106848
+            delta_alpha_1, delta_beta_1, delta_gamma_1 = np.pi/6, np.pi/6000000, np.pi/10
+            delta_alpha_2, delta_beta_2, delta_gamma_2 = np.pi/6, np.pi/6000000, -np.pi/10
+            delta_x_1, delta_y_1, delta_z_1 = 0, 0.05, 0.06
+            delta_x_2, delta_y_2, delta_z_2 = 0, 0.05, 0.06
             
             
 

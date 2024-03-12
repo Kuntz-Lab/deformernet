@@ -37,9 +37,9 @@ from PIL import Image
 # new_im.save(os.path.join(processed_image_path, f"{category}.png"))
 
 
-key_frame_path = "/home/baothach/shape_servo_data/rotation_extension/visualization/TRO_sim_results_bimanual/quartiles/bimanual_box_node"
+key_frame_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/visualization/quartiles/bimanual_chicken_node"
 
-processed_image_path = "/home/baothach/shape_servo_data/rotation_extension/visualization/TRO_sim_results_bimanual/processed_images"
+processed_image_path = "/home/baothach/shape_servo_data/rotation_extension/bimanual/unseen_objects/visualization/processed_images"
 
 
 os.makedirs(processed_image_path, exist_ok=True)
@@ -60,4 +60,4 @@ for im in images:
   new_im.paste(im, (x_offset,0))
   x_offset += im.size[0]
 
-new_im.save(os.path.join(processed_image_path, f"bimanual_quartiles_node.png"))
+new_im.save(os.path.join(processed_image_path, f"bimanual_chicken_quartiles_node.png"))
