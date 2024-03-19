@@ -605,7 +605,6 @@ if __name__ == "__main__":
             # gym.sync_frame_time(sim)
 
 
-  
    
 
 
@@ -616,3 +615,5 @@ if __name__ == "__main__":
         gym.destroy_viewer(viewer)
     gym.destroy_sim(sim)
     print("total data pt count: ", data_point_count)
+    
+    
