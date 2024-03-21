@@ -1,37 +1,29 @@
 import os
 import pickle
 
+main_path = "/home/baothach/shape_servo_data/diffusion_defgoalnet/object_data/retraction_cutting"
+urdf_path = os.path.join(main_path, "urdf")
+# mesh_path = os.path.join(main_path, "mesh")
+os.makedirs(urdf_path,exist_ok=True)
 
-object_mesh_path = "/home/baothach/shape_servo_data/TAMP/object_data/mesh"
-base_mesh_path = object_mesh_path
-object_urdf_path = "/home/baothach/shape_servo_data/TAMP/object_data/urdf"
-
-os.makedirs(object_urdf_path,exist_ok=True)
+shape_name = "cylinder"
 
 density = 100
+youngs = "1e4"
 poissons = 0.3
-scale = 1   #0.5
-attach_dist = 0.001   #0.001
-
-base_thickness = 0.0015
+scale = 1
+attach_dist = 0.01
 
 
 
-with open(os.path.join(object_mesh_path, "primitive_dict.pickle"), 'rb') as handle:
-    data = pickle.load(handle)
+for i in range(0,1):
+    object_name = f"{shape_name}_{i}"
+    base_name = f"{shape_name}_{i}_base" # 
 
-for i in range(1):
-# for i in [1]:
+    # with open(os.path.join(mesh_path, object_name + ".pickle"), 'rb') as handle:
+    #     data = pickle.load(handle)
 
-    object_name = f"box_{i}"
-    base_name = f"base_{i}"
-    height = data[object_name]["height"]
-    width = data[object_name]["width"]
-    thickness = data[object_name]["thickness"]
-    youngs = round(data[object_name]["youngs"])    
-
-   
-    cur_urdf_path = object_urdf_path + '/' + object_name + '.urdf'
+    cur_urdf_path = urdf_path + '/' + object_name + '.urdf'
     f = open(cur_urdf_path, 'w')
     
     urdf_str = f"""<?xml version="1.0" encoding="utf-8"?>    
@@ -52,13 +44,13 @@ for i in range(1):
 
         <link name="fix_frame">
             <visual>
-                <origin xyz="0.0 0.0 {-(10+thickness+base_thickness)*scale/2:.3f}"/>              
+                <origin xyz="0.0 0.0 {0.0:.3f}"/>              
                 <geometry>
                     <mesh filename="../mesh/{base_name+".obj"}" scale="{scale} {scale} {scale}"/>
                 </geometry>
             </visual>
             <collision>
-                <origin xyz="0.0 0.0 {-(thickness+base_thickness)*scale/2:.3f}"/>           
+                <origin xyz="0.0 0.0 {0.0}"/>           
                 <geometry>
                     <mesh filename="../mesh/{base_name+".obj"}" scale="{scale} {scale} {scale}"/>
                 </geometry>
@@ -80,7 +72,7 @@ for i in range(1):
 
     </robot>
     """
-    
+
     f.write(urdf_str)
     f.close()
 
