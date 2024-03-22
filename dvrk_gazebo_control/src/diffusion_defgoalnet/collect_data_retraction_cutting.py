@@ -14,8 +14,6 @@ from isaacgym import gymtorch
 from isaacgym import gymutil
 from copy import copy, deepcopy
 import rospy
-# from dvrk_gazebo_control.srv import *
-from geometry_msgs.msg import PoseStamped, Pose
 from GraspDataCollectionClient import GraspDataCollectionClient
 import open3d
 from utils import open3d_ros_helper as orh
@@ -23,13 +21,10 @@ from utils import o3dpc_to_GraspObject_msg as o3dpc_GO
 #import pptk
 from utils.isaac_utils import isaac_format_pose_to_PoseStamped as to_PoseStamped
 from utils.isaac_utils import fix_object_frame, get_pykdl_client
-# from utils.record_data_h5 import RecordGraspData_sparse
 import pickle
-# from ShapeServo import *
-# from sklearn.decomposition import PCA
 import timeit
 from copy import deepcopy
-from PIL import Image
+
 
 from core import Robot
 from behaviors import MoveToPose, TaskVelocityControl2
@@ -37,10 +32,10 @@ import transformations
 import trimesh
 sys.path.append("../")
 from util.retraction_cutting_utils import get_y_to_x_ratio
+from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
+from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data
 
-
-
-ROBOT_Z_OFFSET = 0.25
+ROBOT_Z_OFFSET = 0.22    #0.25
 # angle_kuka_2 = -0.4
 # init_kuka_2 = 0.15
 two_robot_offset = 0.86
@@ -55,72 +50,6 @@ def init():
         davinci_dof_states['pos'][9] = 0.8
         davinci_dof_states['pos'][4] = 0.24
         gym.set_actor_dof_states(envs[i], kuka_handles_2[i], davinci_dof_states, gymapi.STATE_POS)
-
-def get_point_cloud():
-    gym.refresh_particle_state_tensor(sim)
-    particle_state_tensor = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim)))
-    point_cloud = particle_state_tensor.numpy()[:, :3]  
-    
-    # pcd = open3d.geometry.PointCloud()
-    # pcd.points = open3d.utility.Vector3dVector(np.array(point_cloud))
-    # open3d.visualization.draw_geometries([pcd])     
-    # return list(point_cloud)
-    return point_cloud.astype('float32')
-
-
-def get_partial_point_cloud(i):
-
-    # Render all of the image sensors only when we need their output here
-    # rather than every frame.
-    gym.render_all_camera_sensors(sim)
-
-    points = []
-    print("Converting Depth images to point clouds. Have patience...")
-    # for c in range(len(cam_handles)):
-    
-    # print("Deprojecting from camera %d, %d" % i))
-    # Retrieve depth and segmentation buffer
-    depth_buffer = gym.get_camera_image(sim, envs_obj[i], cam_handles[i], gymapi.IMAGE_DEPTH)
-    seg_buffer = gym.get_camera_image(sim, envs_obj[i], cam_handles[i], gymapi.IMAGE_SEGMENTATION)
-
-
-    # Get the camera view matrix and invert it to transform points from camera to world
-    # space
-    
-    vinv = np.linalg.inv(np.matrix(gym.get_camera_view_matrix(sim, envs_obj[i], cam_handles[0])))
-
-    # Get the camera projection matrix and get the necessary scaling
-    # coefficients for deprojection
-    proj = gym.get_camera_proj_matrix(sim, envs_obj[i], cam_handles[i])
-    fu = 2/proj[0, 0]
-    fv = 2/proj[1, 1]
-
-    # Ignore any points which originate from ground plane or empty space
-    # depth_buffer[seg_buffer == 11] = -10001
-
-    centerU = cam_width/2
-    centerV = cam_height/2
-    for k in range(cam_width):
-        for t in range(cam_height):
-            if depth_buffer[t, k] < -3:
-                continue
-
-            u = -(k-centerU)/(cam_width)  # image-space coordinate
-            v = (t-centerV)/(cam_height)  # image-space coordinate
-            d = depth_buffer[t, k]  # depth buffer value
-            X2 = [d*fu*u, d*fv*v, d, 1]  # deprojection vector
-            p2 = X2*vinv  # Inverse camera view to get world coordinates
-            # print("p2:", p2)
-            if p2[0, 2] > 0.01:
-                points.append([p2[0, 0], p2[0, 1], p2[0, 2]])
-
-    # pcd = open3d.geometry.PointCloud()
-    # pcd.points = open3d.utility.Vector3dVector(np.array(points))
-    # open3d.visualization.draw_geometries([pcd]) 
-
-    # return points
-    return np.array(points).astype('float32')
-
 
 
 
@@ -172,7 +101,8 @@ if __name__ == "__main__":
 
     # Get primitive shape dictionary to know the dimension of the object   
     with open(os.path.join(main_path, "object_data/retraction_cutting/mesh", f"{args.obj_name}_info.pickle"), 'rb') as handle:
-        data = pickle.load(handle)    
+        data = pickle.load(handle)   
+        obj_height = data["height"] 
         nearest_vertices_indices = data["nearest_vertices_indices"]
 
     mesh = trimesh.load(os.path.join(main_path, "object_data/retraction_cutting/mesh", f"{args.obj_name}.obj"))
@@ -342,9 +272,8 @@ if __name__ == "__main__":
     cam_props = gymapi.CameraProperties()
     cam_props.width = cam_width
     cam_props.height = cam_height
-    # cam_positions.append(gymapi.Vec3(0.12, -0.55, 0.15))
-    cam_positions.append(gymapi.Vec3(0.17, -0.62, 0.2))
-    cam_targets.append(gymapi.Vec3(0.0, 0.40-two_robot_offset, 0.01))
+    cam_positions.append(gymapi.Vec3(0.0, soft_pose.p.y - 0.15, 0.1))
+    cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
   
 
     
@@ -374,7 +303,8 @@ if __name__ == "__main__":
     state = "home"
     
 
-    data_recording_path = os.path.join(main_path, "data")
+    data_recording_path = os.path.join(main_path, "data/retraction_cutting")
+    os.makedirs(data_recording_path, exist_ok=True)
 
 
     terminate_count = 0
@@ -383,32 +313,19 @@ if __name__ == "__main__":
     group_count = 0
     data_point_count = len(os.listdir(data_recording_path))
     rospy.logwarn(f"data_point_count: {data_point_count}")
-    max_group_count = 150000
-    
-    if args.data_category == "deformernet":
-        max_sample_count = 2
-    elif args.data_category == "MP":
-        max_sample_count = 1
+    max_sample_count = 2
+
 
     max_data_point_count = 20000
-    # if args.obj_name == 'box_64':
-    #     max_data_point_per_variation = 9600
-    # else:
-    if args.data_category == "deformernet":
-        max_data_point_per_variation = data_point_count + 150
-    elif args.data_category == "MP":
-        max_data_point_per_variation = data_point_count + 40 
 
-    rospy.logwarn("max_data_point_per_variation:" + str(max_data_point_per_variation))
 
-    final_point_clouds = []
-    final_desired_positions = []
-    pc_on_trajectory = []
-    full_pc_on_trajectory = []
-    curr_trans_on_trajectory = []
+
     first_time = True
     save_intial_pc = True
-    switch = True
+    angle_idx = 0
+    recorded_goal_pcs = []
+    segmentationId_dict = {"robot_1": 10, "robot_2": 11, "cylinder": 12}
+    visualization = False
 
     dc_client = GraspDataCollectionClient()
     
@@ -437,21 +354,28 @@ if __name__ == "__main__":
             frame_count += 1
             # gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka", "psm_main_insertion_joint"), 0.103)
             gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka2", "psm_main_insertion_joint"), 0.24)            
+
+            if visualization:
+                if frame_count == 5:                
+                    output_file = "/home/baothach/Downloads/test_cam_views_init.png"           
+                    visualize_camera_views(gym, sim, envs_obj[0], cam_handles, \
+                                        resolution=[cam_props.height, cam_props.width], output_file=output_file)
+
             if frame_count == 10:
                 rospy.loginfo("**Current state: " + state + ", current sample count: " + str(sample_count))
                 
 
-                if first_time:                    
-                    gym.refresh_particle_state_tensor(sim)
-                    saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
-                    init_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
-                    first_time = False
+                # if first_time:                    
+                #     gym.refresh_particle_state_tensor(sim)
+                #     saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
+                #     init_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
+                #     first_time = False
 
                 state = "generate preshape"
                 
                 frame_count = 0
 
-                current_pc = get_point_cloud()
+                current_pc = get_object_particle_state(gym, sim)
                 pcd = open3d.geometry.PointCloud()
                 pcd.points = open3d.utility.Vector3dVector(np.array(current_pc))
                 open3d.io.write_point_cloud("/home/baothach/shape_servo_data/multi_grasps/1.pcd", pcd) # save_grasp_visual_data , point cloud of the object
@@ -467,6 +391,10 @@ if __name__ == "__main__":
             target_pose = [-cartesian_goal.position.x, -cartesian_goal.position.y, cartesian_goal.position.z-ROBOT_Z_OFFSET,
                             0, 0.707107, 0.707107, 0]
 
+            # highest_point_idx = np.argmax(particles[:,2])
+            # target_pose = [-particles[highest_point_idx,0], -particles[highest_point_idx,1], 
+            #                particles[highest_point_idx,2]-ROBOT_Z_OFFSET-0.02,
+            #                 0, 0.707107, 0.707107, 0]
 
             mtp_behavior = MoveToPose(target_pose, robot, sim_params.dt, 2)
             if mtp_behavior.is_complete_failure():
@@ -477,9 +405,11 @@ if __name__ == "__main__":
                 state = "move to preshape"
                 # rospy.loginfo('Moving to this preshape goal: ' + str(cartesian_goal))
 
-            # if args.data_category == "MP":
-            pc_init = get_partial_point_cloud(i)
-            full_pc_init = get_point_cloud()
+            pc_init = get_partial_pointcloud_vectorized(gym, sim, envs_obj[0], cam_handles[0], cam_props, 
+                                                    segmentationId_dict, object_name="deformable", color=None, min_z=0.005, 
+                                                    visualization=False, device="cpu")  
+            full_pc_init = get_object_particle_state(gym, sim)
+
 
         if state == "move to preshape":         
             action = mtp_behavior.get_action()
@@ -514,24 +444,17 @@ if __name__ == "__main__":
                 dof_props_2["damping"][:8].fill(200.0)
                 gym.set_actor_dof_properties(env, kuka_handles_2[i], dof_props_2)
 
+                gym.refresh_particle_state_tensor(sim)
+                saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
+                saved_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
 
 
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state) 
 
-            # max_x = max_y = max_z = 0.15 
-            # # max_z = h / 2.0
 
-            # delta_alpha = np.random.uniform(low = -np.pi/3, high = np.pi/3)
-            # delta_beta = np.random.uniform(low = -np.pi/3, high = np.pi/3) 
-            # delta_gamma = np.random.uniform(low = -np.pi/2, high = np.pi/2)
-
-            # delta_x = np.random.uniform(low = -max_x, high = max_x)
-            # delta_y = np.random.uniform(low = 0.0, high = max_y)
-            # delta_z = np.random.uniform(low = 0.0, high = max_z)    
-
-            magnitude = 0.1#5
-            K = 1./y_to_x[1]
+            magnitude = obj_height  #0.08    #0.1
+            K = 1./y_to_x[1]    # 1./y_to_x[angle_idx]
             y = -np.sqrt(magnitude**2 / (1 + K**2))
             x = K * y
             delta_x, delta_y, delta_z = x, y, 0.00
@@ -567,121 +490,58 @@ if __name__ == "__main__":
                 group_count += 1
                 state = "reset"
 
-            else:
-                # if frame_count % 15 == 0: #15
-                #     full_pc_on_trajectory.append(get_point_cloud())
-                #     pc_on_trajectory.append(get_partial_point_cloud(i))
-                #     curr_trans_on_trajectory.append(get_pykdl_client(robot.get_arm_joint_positions())[1])
-                    
-                #     # if args.data_category == "MP":              
-                #     if frame_count == 0:
-                #         # Only record manipulation point position at the beginning of each trajectory
-                #         mp_mani_point = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_POS)[-3])
-
-                #     terminate_count += 1
-                #     if terminate_count >= 15:
-                #         print("max terminate count")
-                #         state = "reset"
-                #         terminate_count = 0
-                # frame_count += 1   
-     
-                
-                # action, data_pt = tvc_behavior.get_action(debug=True)  
-                # data.append(data_pt)                
-                action = tvc_behavior.get_action()  
-                if action is not None and gym.get_sim_time(sim) - closed_loop_start_time <= 8: 
+            else:      
+                action = tvc_behavior.get_action() 
+                # print(f"{gym.get_sim_time(sim) - closed_loop_start_time:.2f} s") 
+                if action is not None and gym.get_sim_time(sim) - closed_loop_start_time <= 1.5: 
                     gym.set_actor_dof_velocity_targets(robot.env_handle, robot.robot_handle, action.get_joint_position())
                 else:   
+
                     rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
-                    
-                    # if sample_count == 0:
-                    
-                    # pc_goal = get_partial_point_cloud(i)
-                    # full_pc_goal = get_point_cloud()
-                    # _, final_trans = get_pykdl_client(robot.get_arm_joint_positions())
-                    # # print("***Final x, y, z: ", final_pose["pose"]["p"]["x"], final_pose["pose"]["p"]["y"], final_pose["pose"]["p"]["z"] ) 
-                    
-                    # for j, curr_trans in enumerate(curr_trans_on_trajectory):                        
-                    #     p, R, twist = tvc_behavior.get_transform(curr_trans, final_trans, get_twist=True)
-                    #     # mani_point = [-curr_trans[0,3], -curr_trans[1,3], curr_trans[2,3] + ROBOT_Z_OFFSET]
-                    #     mani_point = curr_trans
-                    #     # print("mani_point:", mani_point)
-                        
-                    #     partial_pcs = (pc_on_trajectory[j], pc_goal)
-                    #     full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
+                    partial_goal_pc = get_partial_pointcloud_vectorized(gym, sim, envs_obj[0], cam_handles[0], cam_props, 
+                                                            segmentationId_dict, object_name="deformable", color=None, min_z=0.005, 
+                                                            visualization=False, device="cpu")  
+                    full_pc = get_object_particle_state(gym, sim)
 
-                    #     ### Record data for training DeformerNet.
-                    #     data = {"full pcs": full_pcs, "partial pcs": partial_pcs, "pos": p, "rot": R, "twist": twist, \
-                    #             "mani_point": mani_point, "obj_name": args.obj_name}
-                    #     with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
-                    #         pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
-                    #     print("data_point_count:", data_point_count)
-                    #     data_point_count += 1       
+                    recorded_goal_pcs.append((full_pc, partial_goal_pc))
 
-
-                    # if sample_count == 0:
-                    #     for j in range(1,len(pc_on_trajectory)):    
-                    #         partial_pcs = (pc_init, pc_on_trajectory[j])
-                    #         full_pcs = (full_pc_init, full_pc_on_trajectory[j])
-
-                    #         ### Record data for training manipulation point predictors.
-                    #         data = {"full pcs": full_pcs, "partial pcs": partial_pcs, "mani_point": mp_mani_point["pose"], "obj_name": args.obj_name}
-                    #         with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
-                    #             pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
-                            
-
-                    #         print("mp_data_point_count:", mp_data_point_count)
-                    #         mp_data_point_count += 1            
+                    if visualization:
+                        output_file = f"/home/baothach/Downloads/test_cam_views_{angle_idx}.png"           
+                        visualize_camera_views(gym, sim, envs_obj[0], cam_handles, \
+                                            resolution=[cam_props.height, cam_props.width], output_file=output_file)                    
 
                     frame_count = 0
-                    terminate_count = 0
-                    sample_count += 1
-                    print("group ", group_count, ", sample ", sample_count)
-                    pc_on_trajectory = []
-                    full_pc_on_trajectory = []
-                    curr_trans_on_trajectory = []  
-                    state = "get shape servo plan"
+                    angle_idx += 1
+                    # state = "get shape servo plan"
+                    state = "reset"
+
 
         if state == "reset":   
             rospy.loginfo("**Current state: " + state)
-            frame_count = 0
-            sample_count = 0
-            terminate_count = 0
+            frame_count = 0         
 
-            
-            dof_props_2['driveMode'][:8].fill(gymapi.DOF_MODE_POS)
-            dof_props_2["stiffness"][:8].fill(200.0)
-            dof_props_2["damping"][:8].fill(40.0)
-            
-
-            gym.set_actor_rigid_body_states(envs[i], kuka_handles_2[i], init_robot_state, gymapi.STATE_ALL) 
+            gym.set_actor_rigid_body_states(envs[i], kuka_handles_2[i], saved_robot_state, gymapi.STATE_ALL) 
             gym.set_particle_state_tensor(sim, gymtorch.unwrap_tensor(saved_object_state))
-            gym.set_actor_dof_velocity_targets(robot.env_handle, robot.robot_handle, [0]*8)
+            # gym.set_actor_dof_velocity_targets(robot.env_handle, robot.robot_handle, [0]*8)
             
-            print("Sucessfully reset robot and object")
-            pc_on_trajectory = []
-            full_pc_on_trajectory = []
-            curr_trans_on_trajectory = []
-                
+            print("Sucessfully reset robot and object!")
 
-            gym.set_actor_dof_properties(env, kuka_handles_2[i], dof_props_2)  
-            gym.set_actor_dof_position_targets(robot.env_handle, robot.robot_handle, [0,0,0,0,0.24,0,0,0,1.5,0.8]) 
-
-
-            state = "home"
+            state = "get shape servo plan"
  
         
-        if sample_count == max_sample_count:  
-            sample_count = 0            
-            group_count += 1
-            print("group count: ", group_count)
-            state = "reset" 
 
-
-
-        # if group_count == max_group_count or data_point_count >= max_data_point_count: 
-        if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:                    
+        if  data_point_count >= max_data_point_count:                    
             all_done = True 
+
+        if angle_idx >= max_sample_count:    
+            full_goal_pcs = (recorded_goal_pcs[0][0], recorded_goal_pcs[1][0])
+            partial_goal_pcs = (recorded_goal_pcs[0][1], recorded_goal_pcs[1][1])
+
+            data = {"full_goal_pcs": full_goal_pcs, "partial_goal_pcs": partial_goal_pcs,
+                    "full_init_pc": full_pc_init, "partial_init_pc": full_pc_init}
+            write_pickle_data(data, os.path.join(data_recording_path, f"{args.obj_name}_{something}.pickle"))
+            all_done = True
+
 
         # step rendering
         gym.step_graphics(sim)

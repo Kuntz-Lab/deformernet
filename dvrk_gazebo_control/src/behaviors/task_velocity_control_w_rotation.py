@@ -102,7 +102,7 @@ class TaskVelocityControl2(Behavior):
         #     rospy.logerr("DONE POSITION")
         # if all(abs(delta_ee[3:]) <= self.err_thres[3:]):
         #     rospy.logerr("DONE ORI")
-                
+        # print("delta_ee:", ', '.join([f"{num:.3f}" for num in delta_ee]))        
         if np.any(abs(delta_ee) > self.err_thres):
             
             # q_cur = self.robot.get_arm_joint_positions()

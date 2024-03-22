@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision
 from torchvision.utils import make_grid
-
+from isaacgym import gymapi
 
 def compute_pointcloud(D_i, S_i, V_inv, P, w, h, min_z, segmentationId_dict, object_name="deformable", device="cuda"):
     '''

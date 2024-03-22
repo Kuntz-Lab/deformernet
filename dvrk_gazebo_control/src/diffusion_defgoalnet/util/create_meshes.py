@@ -15,16 +15,17 @@ save_dir = "/home/baothach/shape_servo_data/diffusion_defgoalnet/object_data/ret
 os.makedirs(os.path.join(save_dir, "mesh"), exist_ok=True)
 
 export_tri_mesh = True#False
-export_tet_mesh = True
+export_tet_mesh = False
 
 object_name = "cylinder_0"
 
 if export_tri_mesh:
-    radius = 0.02
-    height = 0.1
-    # radius = 0.03
+    # radius = 0.02
     # height = 0.1
-    slicing_angles = [30, 0, 0] 
+    radius = 0.03
+    height = 0.1
+    
+    slicing_angles = [30, 30, 30]     # [30, 0, 0]
     plane_normal=[0,0,1]
     plane_origin=[0,0.0,-height * 0.2]
 
@@ -54,10 +55,10 @@ if export_tri_mesh:
     # print(nearest_vertices_indices.shape)
 
 
-    # Save the mesh and other information
-    mesh.export(os.path.join(save_dir, "mesh", f"{object_name}.obj")) 
-    info = {"radius": radius, "height": height, "nearest_vertices_indices": nearest_vertices_indices, "slicing_angles": slicing_angles}
-    write_pickle_data(info, os.path.join(save_dir, "mesh", f"{object_name}_info.pickle"))
+    # # Save the mesh and other information
+    # mesh.export(os.path.join(save_dir, "mesh", f"{object_name}.obj")) 
+    # info = {"radius": radius, "height": height, "nearest_vertices_indices": nearest_vertices_indices, "slicing_angles": slicing_angles}
+    # write_pickle_data(info, os.path.join(save_dir, "mesh", f"{object_name}_info.pickle"))
 
 
     # To visualize these as large, noticeable points, we'll create a set of spheres at each vertex position
@@ -83,6 +84,7 @@ if export_tri_mesh:
 
 
 if export_tet_mesh:
+    print("Generating tetrahedral mesh ...")
     create_tet_mesh(os.path.join(save_dir, "mesh"), 
                     object_name, mesh_extension='.obj',
                     coarsen=False, verbose=False)
