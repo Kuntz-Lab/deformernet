@@ -179,3 +179,44 @@ def apply_euler_rotation_trimesh(mesh, roll, pitch, yaw, degrees=False):
     mesh.apply_transform(transformation_matrix)
     
     return mesh
+
+def find_mesh_intersection_plane(mesh, plane_normal, plane_origin, vis=False):
+    """
+    Find the intersection lines between a mesh and a plane.
+    
+    Parameters:
+    - mesh: trimesh.Trimesh object. Or a tuple of (vertices, faces) representing the mesh
+    - plane_normal: Normal vector of the plane
+    - plane_origin: Origin point of the plane
+    
+    Returns:
+    - intersection_positions: np.array shape (N,3). 3D points representing the intersection positions.
+    """
+    
+    if not isinstance(mesh, trimesh.Trimesh):
+        mesh = trimesh.Trimesh(vertices=mesh[0], faces=mesh[1]) # .reshape(-1,3).astype(np.int32)
+    
+    lines = trimesh.intersections.mesh_plane(mesh, plane_normal=plane_normal, 
+                                            plane_origin=plane_origin, return_faces=False)
+    
+    points = lines[:lines.shape[0]//2,0,:]
+    # print("points.shape:", points.shape)
+    print("lines.shape, points.shape:", lines.shape, points.shape)
+    
+    if vis:        
+        coordinate_frame = trimesh.creation.axis()  
+        coordinate_frame.apply_scale(0.2)
+        meshes = [mesh, coordinate_frame]
+        for position in points:
+            sphere = trimesh.creation.icosphere(radius=0.002)
+            sphere.apply_translation(position)
+            sphere.visual.face_colors = [250, 0, 0, 128]
+            meshes.append(sphere)    
+            
+        trimesh.Scene(meshes).show()
+    
+    return points
+    
+    
+    
+     

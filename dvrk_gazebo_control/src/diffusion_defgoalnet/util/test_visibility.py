@@ -17,18 +17,18 @@ os.makedirs(os.path.join(save_dir, "mesh"), exist_ok=True)
 export_tri_mesh = True#False
 export_tet_mesh = True
 
-object_name = "cylinder_0"
-category = "cylinder"   # ellipsoid cylinder
+object_name = "cylinder_1"
+category = "ellipsoid"   # ellipsoid cylinder
 
 if export_tri_mesh:
     if category == "cylinder":
-        radius = 0.02   #0.04
+        radius = 0.02
         height = 0.1
         # radius = 0.03
         # height = 0.1
 
 
-        slicing_angles = [30, 30, 30] 
+        slicing_angles = [0, 0, 0] 
         plane_normal=[0,0,1]
         plane_origin=[0,0.0,-height * 0.2]
 
@@ -36,13 +36,13 @@ if export_tri_mesh:
 
     elif category == "ellipsoid":
         radius = 0.075#0.05
-        ratio = 4/5 # 2/5
+        ratio = 4/5
         mesh = trimesh.creation.icosphere(radius = radius) 
 
 
         vertices_transformed = mesh.vertices * np.array([ratio,ratio,1])
         mesh = trimesh.Trimesh(vertices=vertices_transformed, faces=mesh.faces)
-        slicing_angles = [30, 30, 30] 
+        slicing_angles = [0, 0, 0]
         plane_normal=[0,0,1]
         plane_origin=[0,0,-radius * 0.4]
 
@@ -72,12 +72,6 @@ if export_tri_mesh:
     nearest_vertices_indices = np.array(nearest_vertices_indices[1], dtype=int)
     # print(nearest_vertices_indices.shape)
 
-    nearest_vertices_positions = mesh.vertices[nearest_vertices_indices].reshape(-1, 3)
-    # print(nearest_vertices_positions.shape, mesh.vertices.shape)
-
-    attachement_positions = mesh.vertices[nearest_vertices_indices]
-    nearest_vertices_indices = nearest_vertices_indices[np.where(attachement_positions[:, 1] < 0.001)[0]]
-    print("final nearest_vertices_indices:", nearest_vertices_indices.shape)
 
     # Save the mesh and other information
     if category == "cylinder":
@@ -94,30 +88,29 @@ if export_tri_mesh:
 
     # To visualize these as large, noticeable points, we'll create a set of spheres at each vertex position
     # Adjust the sphere radius as needed to make them clearly visible
-    # nearest_vertices_positions = mesh.vertices[nearest_vertices_indices].reshape(-1, 3)
+    nearest_vertices_positions = mesh.vertices[nearest_vertices_indices].reshape(-1, 3)
     for position in nearest_vertices_positions:
         sphere = trimesh.creation.icosphere(radius=0.002)
         sphere.apply_translation(position)
         sphere.visual.face_colors = [250, 0, 0, 128]
         meshes.append(sphere)
 
+    attachement_positions = mesh.vertices[nearest_vertices_indices]
+    nearest_vertices_indices = nearest_vertices_indices[np.where(attachement_positions[:, 0] < 0.001)[0]]
+    nearest_vertices_positions = mesh.vertices[nearest_vertices_indices].reshape(-1, 3)
+    for position in nearest_vertices_positions:
+        sphere = trimesh.creation.icosphere(radius=0.002)
+        sphere.apply_translation(position)
+        sphere.visual.face_colors = [0, 0, 250, 128]
+        meshes.append(sphere)
 
-    spheres = trimesh.util.concatenate(meshes[2:])
-    spheres.export(os.path.join(save_dir, "mesh", f"{object_name}_base.obj")) 
-    # # spheres.show()
+
+    # spheres = trimesh.util.concatenate(meshes[2:])
+    # spheres.export(os.path.join(save_dir, "mesh", f"{object_name}_base.obj")) 
+    # # # spheres.show()
 
     trimesh.Scene(meshes).show()
 
-    # Check if any lines were found
-    if lines.shape[0] > 0:
-        # Create a LineCollection from the line segments for visualization
-        line_collection = trimesh.load_path(lines.reshape(-1, 3))
-        
-        # Create a scene and add the original mesh and the line collection
-        scene = trimesh.Scene([mesh, line_collection])
-
-        # Show the scene
-        scene.show()
 
 
 

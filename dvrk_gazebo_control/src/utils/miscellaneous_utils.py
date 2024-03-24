@@ -4,96 +4,9 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import pickle5 as pickle
 import os
+from .point_cloud_utils import pcd_ize
 
 
-def down_sampling(pc, num_pts=1024, return_indices=False):
-    # farthest_indices,_ = farthest_point_sampling(pc, num_pts)
-    # pc = pc[farthest_indices.squeeze()]  
-    # return pc
-
-    """
-    Input:
-        pc: point cloud data, [B, N, D] where B = num batches, N = num points, D = feature size (typically D=3)
-        num_pts: number of samples
-    Return:
-        centroids: sampled pointcloud index, [num_pts, D]
-        pc: down_sampled point cloud, [num_pts, D]
-    """
-
-    if pc.ndim == 2:
-        # insert batch_size axis
-        pc = deepcopy(pc)[None, ...]
-
-    B, N, D = pc.shape
-    xyz = pc[:, :,:3]
-    centroids = np.zeros((B, num_pts))
-    distance = np.ones((B, N)) * 1e10
-    farthest = np.random.uniform(low=0, high=N, size=(B,)).astype(np.int32)
-
-    for i in range(num_pts):
-        centroids[:, i] = farthest
-        centroid = xyz[np.arange(0, B), farthest, :] # (B, D)
-        centroid = np.expand_dims(centroid, axis=1) # (B, 1, D)
-        dist = np.sum((xyz - centroid) ** 2, -1) # (B, N)
-        mask = dist < distance
-        distance[mask] = dist[mask]
-        farthest = np.argmax(distance, -1) # (B,)
-
-    pc = pc[np.arange(0, B).reshape(-1, 1), centroids.astype(np.int32), :]
-
-    if return_indices:
-        return pc.squeeze(), centroids.astype(np.int32)
-
-    return pc.squeeze()
-
-def down_sampling_torch(pc, num_pts=1024, return_indices=False):
-    """
-    Input:
-        pc: point cloud data, [B, N, D] where B = num batches, N = num points, D = feature size (typically D=3)
-        num_pts: number of samples
-    Return:
-        centroids: sampled point cloud index, [num_pts, D]
-        pc: down-sampled point cloud, [num_pts, D]
-    """
-    import torch
-    if pc.ndim == 2:
-        # Insert batch_size axis
-        pc = pc.unsqueeze(0)
-
-    B, N, D = pc.shape
-    xyz = pc[:, :, :3]
-    centroids = torch.zeros((B, num_pts), dtype=torch.long, device=pc.device)
-    distance = torch.ones((B, N), dtype=pc.dtype, device=pc.device) * 1e10
-    farthest = torch.randint(0, N, (B,), dtype=torch.long, device=pc.device)
-
-    for i in range(num_pts):
-        centroids[:, i] = farthest
-        centroid = xyz[torch.arange(0, B), farthest, :]  # (B, D)
-        centroid = centroid.unsqueeze(1)  # (B, 1, D)
-        dist = torch.sum((xyz - centroid) ** 2, -1)  # (B, N)
-        mask = dist < distance
-        distance[mask] = dist[mask]
-        farthest = torch.argmax(distance, -1)  # (B,)
-
-    pc = pc[torch.arange(0, B).view(-1, 1), centroids, :]
-
-    if return_indices:
-        return pc.squeeze(), centroids
-
-    return pc.squeeze()
-
-def pcd_ize(pc, color=None, vis=False):
-    """ 
-    Convert point cloud numpy array to an open3d object (usually for visualization purpose).
-    """
-    import open3d
-    pcd = open3d.geometry.PointCloud()
-    pcd.points = open3d.utility.Vector3dVector(pc)   
-    if color is not None:
-        pcd.paint_uniform_color(color) 
-    if vis:
-        open3d.visualization.draw_geometries([pcd])
-    return pcd
 
 
 def get_object_particle_state(gym, sim, vis=False):

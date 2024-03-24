@@ -34,6 +34,8 @@ sys.path.append("../")
 from util.retraction_cutting_utils import get_y_to_x_ratio
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
 from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data
+from utils.point_cloud_utils import pcd_ize, spherify_point_cloud_open3d
+from utils.mesh_utils import find_mesh_intersection_plane
 
 ROBOT_Z_OFFSET = 0.22    #0.25
 # angle_kuka_2 = -0.4
@@ -63,9 +65,10 @@ if __name__ == "__main__":
         description="Kuka Bin Test",
         custom_parameters=[
             {"name": "--num_envs", "type": int, "default": 1, "help": "Number of environments to create"},
-            {"name": "--num_objects", "type": int, "default": 10, "help": "Number of objects in the bin"},
             {"name": "--obj_name", "type": str, "default": 'cylinder_0', "help": "select variations of a primitive shape"},
             {"name": "--headless", "type": bool, "default": False, "help": "headless mode"},
+            {"name": "--current_data_idx", "type": int, "default": 1, 
+             "help": "index of the current data point, for a specific object."},
             {"name": "--data_category", "type": str, "default": "deformernet", "help": "deformernet or MP"}])
     
     num_envs = args.num_envs
@@ -102,23 +105,25 @@ if __name__ == "__main__":
     # Get primitive shape dictionary to know the dimension of the object   
     with open(os.path.join(main_path, "object_data/retraction_cutting/mesh", f"{args.obj_name}_info.pickle"), 'rb') as handle:
         data = pickle.load(handle)   
-        obj_height = data["height"] 
+        obj_height = data["height"] #data["height"]  data["radius"]*2
         nearest_vertices_indices = data["nearest_vertices_indices"]
 
     mesh = trimesh.load(os.path.join(main_path, "object_data/retraction_cutting/mesh", f"{args.obj_name}.obj"))
     attachment_positions = mesh.vertices[nearest_vertices_indices]
+    print("attachment_positions.shape:", attachment_positions.shape)
     
-    start_idx = 12
-    end_idx = 14
+    # start_idx = 0   #12
+    # end_idx = len(attachment_positions)//2  #14
     # sampled_indices = np.random.choice(len(nearest_vertices_indices), 2, replace=False)
-    # (start_idx, end_idx) =  (sampled_indices[0], sampled_indices[1]) \
-    #                     if attachment_positions[sampled_indices[0]][0] < attachment_positions[sampled_indices[1]][0] \
-    #                     else  (sampled_indices[1], sampled_indices[0])
+    sampled_indices = [13,11]
+    (start_idx, end_idx) =  (sampled_indices[0], sampled_indices[1]) \
+                        if attachment_positions[sampled_indices[0]][0] < attachment_positions[sampled_indices[1]][0] \
+                        else  (sampled_indices[1], sampled_indices[0])
     print("***start_idx, end_idx:", start_idx, end_idx)
     y_to_x = get_y_to_x_ratio(attachment_positions[start_idx], attachment_positions[end_idx])
     
     
-    print("*******y_to_x.shape:", y_to_x)
+    # print("*******y_to_x.shape:", y_to_x)
 
 
     # add ground plane
@@ -166,7 +171,7 @@ if __name__ == "__main__":
 
 
     soft_pose = gymapi.Transform()
-    soft_pose.p = gymapi.Vec3(0.0, -0.42, 0)
+    soft_pose.p = gymapi.Vec3(0.0, -0.42, 0.001)
     # soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
     # soft_pose.r = gymapi.Quat(0.7071068, 0, 0, 0.7071068)
     soft_thickness = 0.001#0.0005    # important to add some thickness to the soft body to avoid interpenetrations
@@ -365,11 +370,23 @@ if __name__ == "__main__":
                 rospy.loginfo("**Current state: " + state + ", current sample count: " + str(sample_count))
                 
 
-                # if first_time:                    
-                #     gym.refresh_particle_state_tensor(sim)
-                #     saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
-                #     init_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
-                #     first_time = False
+                if first_time:                    
+
+                    gym.refresh_particle_state_tensor(sim)
+                    saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
+                    saved_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
+
+                    if start_idx > end_idx:
+                        indices = np.concatenate((np.arange(0, end_idx+1), np.arange(start_idx, len(nearest_vertices_indices))))
+                        context = attachment_positions[indices]                  
+                    elif start_idx < end_idx:
+                        context = attachment_positions[start_idx:end_idx+1]
+                    context += np.array([soft_pose.p.x, soft_pose.p.y, soft_pose.p.z])
+                    # context_pcd = pcd_ize(context, color=(1,0,0), vis=True)
+                    # # context_sphere_pcd = spherify_point_cloud_open3d(context, color=(1,0,0), vis=False)
+                    # pcd = pcd_ize(get_object_particle_state(gym, sim), color=(0,0,0), vis=False)
+                    # open3d.visualization.draw_geometries([pcd, context_pcd])
+                    first_time = False
 
                 state = "generate preshape"
                 
@@ -538,8 +555,9 @@ if __name__ == "__main__":
             partial_goal_pcs = (recorded_goal_pcs[0][1], recorded_goal_pcs[1][1])
 
             data = {"full_goal_pcs": full_goal_pcs, "partial_goal_pcs": partial_goal_pcs,
-                    "full_init_pc": full_pc_init, "partial_init_pc": full_pc_init}
-            write_pickle_data(data, os.path.join(data_recording_path, f"{args.obj_name}_{something}.pickle"))
+                    "full_init_pc": full_pc_init, "partial_init_pc": full_pc_init, 
+                    "context": context}
+            write_pickle_data(data, os.path.join(data_recording_path, f"{args.obj_name}_{args.current_data_idx}.pickle"))
             all_done = True
 
 

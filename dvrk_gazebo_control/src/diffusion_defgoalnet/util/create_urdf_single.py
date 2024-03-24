@@ -16,7 +16,7 @@ attach_dist = 0.01
 
 
 
-for i in range(0,1):
+for i in range(0,2):
     object_name = f"{shape_name}_{i}"
     base_name = f"{shape_name}_{i}_base" # 
 
