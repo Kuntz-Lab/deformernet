@@ -182,3 +182,19 @@ def get_extents_object(tet_file):
     
     return [[min(xs), min(ys), min(zs)],\
             [max(xs), max(ys), max(zs)]]   
+    
+    
+def print_lists_with_formatting(lists, decimals, prefix_str):
+    print(prefix_str, end=' ')  # Print the prefix string followed by a space
+    for lst in lists:
+        print("[", end='')
+        # Check if the iterable is not empty by checking its length
+        if len(lst) > 0:
+            for e in lst[:-1]:
+                print(f"{e:.{decimals}f}" if isinstance(e, float) else e, end=', ')
+            # Handle the last element to avoid a trailing comma
+            print(f"{lst[-1]:.{decimals}f}" if isinstance(lst[-1], float) else lst[-1], end='] ')
+        else:
+            print("]", end=' ')
+            
+    print("\n")

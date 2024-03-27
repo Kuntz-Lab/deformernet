@@ -31,11 +31,11 @@ from behaviors import MoveToPose, TaskVelocityControl2
 import transformations
 import trimesh
 sys.path.append("../")
-from util.retraction_cutting_utils import get_eef_position
+from util.retraction_cutting_utils import get_y_to_x_ratio
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
-from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color
+from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data
 from utils.point_cloud_utils import pcd_ize, spherify_point_cloud_open3d
-
+from utils.mesh_utils import find_mesh_intersection_plane
 
 ROBOT_Z_OFFSET = 0.22    #0.25
 # angle_kuka_2 = -0.4
@@ -66,13 +66,12 @@ if __name__ == "__main__":
         custom_parameters=[
             {"name": "--num_envs", "type": int, "default": 1, "help": "Number of environments to create"},
             {"name": "--obj_name", "type": str, "default": 'cylinder_0', "help": "select variations of a primitive shape"},
-            {"name": "--headless", "type": str, "default": "False", "help": "headless mode"},
+            {"name": "--headless", "type": bool, "default": False, "help": "headless mode"},
             {"name": "--current_data_idx", "type": int, "default": 1, 
              "help": "index of the current data point, for a specific object."},
             {"name": "--data_category", "type": str, "default": "deformernet", "help": "deformernet or MP"}])
     
     num_envs = args.num_envs
-    args.headless = args.headless == "True"
     
     main_path = "/home/baothach/shape_servo_data/diffusion_defgoalnet"
 
@@ -92,7 +91,7 @@ if __name__ == "__main__":
         # elif args.data_category == "MP":
         #     sim_params.flex.num_outer_iterations = 4
 
-        sim_params.flex.num_outer_iterations = 6 #4 10 6
+        sim_params.flex.num_outer_iterations = 6 #4 10
         sim_params.flex.num_inner_iterations = 50
         sim_params.flex.relaxation = 0.7
         sim_params.flex.warm_start = 0.1
@@ -101,35 +100,31 @@ if __name__ == "__main__":
         sim_params.flex.shape_collision_margin = 1.0e-4
         sim_params.flex.deterministic_mode = True
 
-        # # Set stress visualization parameters
-        # sim_params.stress_visualization = True
-        # sim_params.stress_visualization_min = 0.0   #1.0e2
-        # sim_params.stress_visualization_max = 5e4   #1e5
+        # Set stress visualization parameters
+        sim_params.stress_visualization = True
+        sim_params.stress_visualization_min = 0.0   #1.0e2
+        sim_params.stress_visualization_max = 5e4   #1e5
 
     sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, sim_params)
 
     # Get primitive shape dictionary to know the dimension of the object   
     with open(os.path.join(main_path, "object_data/retraction_cutting/mesh", f"{args.obj_name}_info.pickle"), 'rb') as handle:
         data = pickle.load(handle)   
-        # obj_height = data["height"] #data["height"]  data["radius"]*2
-        if "height" in data:
-            obj_height = data["height"]
-        elif "radius" in data:
-            obj_height = data["radius"]*2
-            
+        obj_height = data["height"] #data["height"]  data["radius"]*2
         attachment_positions = data["attachment_positions"]
 
     print("attachment_positions.shape:", attachment_positions.shape)
         
-    # sampled_indices = [0, 13]   # [0, 5]
-    sampled_indices = np.random.choice(attachment_positions.shape[0], 2, replace=False)
+    sampled_indices = [0, 9]  #[11, 13]
+    # sampled_indices = np.random.choice(attachment_positions.shape[0], 2, replace=False)
     (start_idx, end_idx) =  (sampled_indices[0], sampled_indices[1]) \
                         if attachment_positions[sampled_indices[0]][0] < attachment_positions[sampled_indices[1]][0] \
                         else  (sampled_indices[1], sampled_indices[0])
     print("***start_idx, end_idx:", start_idx, end_idx)
-    # y_to_x = get_y_to_x_ratio(attachment_positions[start_idx], attachment_positions[end_idx])
+    y_to_x = get_y_to_x_ratio(attachment_positions[start_idx], attachment_positions[end_idx])
     
-    # print("*******y_to_x.shape:", y_to_x)
+    
+    print("*******y_to_x.shape:", y_to_x)
 
 
     # add ground plane
@@ -239,8 +234,7 @@ if __name__ == "__main__":
             color = gymapi.Vec3(1,0,0)
             gym.set_rigid_body_color(env, sphere_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)   
             sphere_handles.append(sphere_handle)    
-        
-        
+
         # add soft obj        
         env_obj = env
         env_obj = gym.create_env(sim, env_lower, env_upper, num_per_row)
@@ -284,11 +278,10 @@ if __name__ == "__main__":
     cam_props = gymapi.CameraProperties()
     cam_props.width = cam_width
     cam_props.height = cam_height
-    cam_positions.append(gymapi.Vec3(0.0, soft_pose.p.y - 0.15, 0.1))   # put camera in front of the object
+    cam_positions.append(gymapi.Vec3(0.0, soft_pose.p.y - 0.15, 0.1))
     cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
   
-    # cam_positions.append(gymapi.Vec3(0.15, soft_pose.p.y, 0.1))   # put camera on the side of object
-    # cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
+
     
     for i, env_obj in enumerate(envs_obj):
             cam_handles.append(gym.create_camera_sensor(env_obj, cam_props))
@@ -306,7 +299,8 @@ if __name__ == "__main__":
     Main stuff is here
     '''
     rospy.init_node('isaac_grasp_client')
-    print_color(f"Object name: {args.obj_name}, Context idx: {args.current_data_idx}")
+    rospy.logerr("======Loading object ... " + str(args.obj_name))  
+    rospy.logerr(f"Data Category: {args.data_category}")
  
 
     # Some important paramters
@@ -337,7 +331,7 @@ if __name__ == "__main__":
     angle_idx = 0
     recorded_goal_pcs = []
     segmentationId_dict = {"robot_1": 10, "robot_2": 11, "cylinder": 12}
-    visualization = True
+    visualization = False
 
     dc_client = GraspDataCollectionClient()
     
@@ -378,22 +372,23 @@ if __name__ == "__main__":
                 
 
                 if first_time:                    
-                    attachment_positions += np.array([soft_pose.p.x, soft_pose.p.y, soft_pose.p.z])
+
                     gym.refresh_particle_state_tensor(sim)
                     saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
                     saved_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
 
                     if start_idx > end_idx:
                         indices = np.concatenate((np.arange(0, end_idx+1), np.arange(start_idx, len(attachment_positions))))
-                        context = deepcopy(attachment_positions[indices])              
+                        context = attachment_positions[indices]                  
                     elif start_idx < end_idx:
-                        context = deepcopy(attachment_positions[start_idx:end_idx+1])
-                    # context += np.array([soft_pose.p.x, soft_pose.p.y, soft_pose.p.z])
+                        context = attachment_positions[start_idx:end_idx+1]
+                    context += np.array([soft_pose.p.x, soft_pose.p.y, soft_pose.p.z])
                     # context_pcd = pcd_ize(context, color=(1,0,0), vis=True)
                     # context_sphere_pcd = spherify_point_cloud_open3d(context, color=(1,0,0), vis=False)
                     # pcd = pcd_ize(get_object_particle_state(gym, sim), color=(0,0,0), vis=False)
                     # open3d.visualization.draw_geometries([pcd, context_sphere_pcd])
                     first_time = False
+
                 state = "generate preshape"
                 
                 frame_count = 0
@@ -403,7 +398,7 @@ if __name__ == "__main__":
                 pcd.points = open3d.utility.Vector3dVector(np.array(current_pc))
                 open3d.io.write_point_cloud("/home/baothach/shape_servo_data/multi_grasps/1.pcd", pcd) # save_grasp_visual_data , point cloud of the object
                 pc_ros_msg = dc_client.seg_obj_from_file_client(pcd_file_path = "/home/baothach/shape_servo_data/multi_grasps/1.pcd", align_obj_frame = False).obj
-                # pc_ros_msg = fix_object_frame(pc_ros_msg)
+                pc_ros_msg = fix_object_frame(pc_ros_msg)
                 saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
 
 
@@ -471,47 +466,23 @@ if __name__ == "__main__":
                 saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
                 saved_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
 
-                eef_positions = get_eef_position(attachment_positions[start_idx,:2], 
-                                                attachment_positions[end_idx,:2], 
-                                                45, obj_height*1, vis=False)
 
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state) 
 
 
-            # magnitude = obj_height * 0.8  #0.1
-            # K = 1./y_to_x[1]    # 1./y_to_x[angle_idx]
-            # y = -np.sqrt(magnitude**2 / (1 + K**2))
-            # x = K * y
-            
-            # # magnitude = obj_height * 0.7        
-            # # K = 1./y_to_x[0]    # 1./y_to_x[angle_idx]
-            # # y = np.sqrt(magnitude**2 / (1 + K**2))
-            # # if angle_idx == 1:
-            # #     y *= -1
-            # # x = K * y  
-            # # if x > 0:
-            # #     x *= 1.3
-                      
-            # delta_x, delta_y, delta_z = x, y, 0.00
+            magnitude = obj_height  #0.08    #0.1
+            K = 1./y_to_x[angle_idx]    # 1./y_to_x[angle_idx]
+            y = -np.sqrt(magnitude**2 / (1 + K**2))
+            x = K * y
+            delta_x, delta_y, delta_z = x, y, 0.00
             delta_alpha, delta_beta, delta_gamma = 1e-6, 1e-6, 1e-6   
 
-            # print("select x, y, z, a, b, g:", delta_x, delta_y, delta_z, " | ", delta_alpha, delta_beta, delta_gamma)           
+            print("select x, y, z, a, b, g:", delta_x, delta_y, delta_z, " | ", delta_alpha, delta_beta, delta_gamma)           
 
-
-            # print_lists_with_formatting([attachment_positions[start_idx], attachment_positions[end_idx],
-            #                        (attachment_positions[start_idx] + attachment_positions[end_idx]) / 2], 3, "attchment pos:")
-            # x = delta_x + init_pose[0,3]
-            # y = delta_y + init_pose[1,3]
-            mid_point = (attachment_positions[start_idx] + attachment_positions[end_idx]) / 2 
-
-            
-            # print_lists_with_formatting([init_pose[:3,3], mid_point], 3, "init_pose, mid_point:")
-
-            eef_position = eef_positions[angle_idx]
-            # x, y = -mid_point[0] + delta_x, -mid_point[1] + delta_y
-            x, y = -eef_position[0], -eef_position[1]
-            z = init_pose[2,3]  #delta_z + init_pose[2,3]
+            x = delta_x + init_pose[0,3]
+            y = delta_y + init_pose[1,3]
+            z = delta_z + init_pose[2,3]
             alpha = delta_alpha + init_eulers[0]
             beta = delta_beta + init_eulers[1]
             gamma = delta_gamma + init_eulers[2]
@@ -527,8 +498,7 @@ if __name__ == "__main__":
             if main_ins_pos <= 0.042:
                 rospy.logerr("Exceed joint constraint")
                 group_count += 1
-                # state = "reset"
-                all_done = True
+                state = "reset"
 
 
             contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
@@ -536,8 +506,7 @@ if __name__ == "__main__":
                 rospy.logerr("Lost contact with robot")
                 
                 group_count += 1
-                # state = "reset"
-                all_done = True
+                state = "reset"
 
             else:      
                 action = tvc_behavior.get_action() 
@@ -591,7 +560,6 @@ if __name__ == "__main__":
                     "context": context}
             write_pickle_data(data, os.path.join(data_recording_path, f"{args.obj_name}_{args.current_data_idx}.pickle"))
             all_done = True
-            rospy.logerr("Simulation succesfully completed. Data saved!")
 
 
         # step rendering

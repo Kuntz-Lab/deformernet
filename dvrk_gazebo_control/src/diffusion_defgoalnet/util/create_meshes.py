@@ -17,9 +17,9 @@ os.makedirs(os.path.join(save_dir, "mesh"), exist_ok=True)
 export_tri_mesh = True#False
 export_tet_mesh = True
 vis = False
-num_object_per_category = 5#0
+num_object_per_category = 50
 
-categoies = ["ellipsoid", "cylinder"]
+categoies = ["cylinder", "ellipsoid"]
 
 for category in categoies:
     for object_idx in range(num_object_per_category):
@@ -36,7 +36,7 @@ for category in categoies:
                 mesh = trimesh.creation.cylinder(radius=radius, height=height)
 
             elif category == "ellipsoid":
-                radius = np.random.uniform(0.025, 0.75)
+                radius = np.random.uniform(0.025, 0.075)
                 ratio = np.random.uniform(2/5, 4/5)
 
                 plane_origin=[0,0,-radius * 0.4]
@@ -61,41 +61,39 @@ for category in categoies:
             # Find the intersection lines
             lines, face_index = trimesh.intersections.mesh_plane(mesh, plane_normal=plane_normal, plane_origin=plane_origin-lowest_point_z, return_faces=True)
             points = lines[:lines.shape[0]//2,0,:]  # Just get the start points of each line segments
-            print("lines.shape, points.shape:", lines.shape, points.shape)
-            # points = points[0:lines.shape[0]//2:1] # Only take every other point to reduce the number of points
-            # points = lines.reshape(-1, 3)
+            # print("lines.shape, points.shape:", lines.shape, points.shape)
+
+
 
             # Perform a batch query to find the nearest vertex in the mesh for each point
-            # This function returns indices of the nearest vertices to each point
             nearest_vertices_indices = mesh.nearest.vertex(points)
             nearest_vertices_indices = np.array(nearest_vertices_indices[1], dtype=int)
 
-            nearest_vertices_positions = mesh.vertices[nearest_vertices_indices].reshape(-1, 3)
-
-            attachement_positions = mesh.vertices[nearest_vertices_indices]
-            nearest_vertices_indices = nearest_vertices_indices[np.where(attachement_positions[:, 1] < 0.001)[0]]
+            attachment_positions = mesh.vertices[nearest_vertices_indices]
+            mean_y = np.mean(attachment_positions[:, 1])
+            filtered_attachment_positions = attachment_positions[np.where(attachment_positions[:, 1] < mean_y)]
+            # print("final attachment_positions.shape:", filtered_attachment_positions.shape)
 
             # Save the mesh and other information
             if category == "cylinder":
                 mesh.export(os.path.join(save_dir, "mesh", f"{object_name}.obj")) 
-                info = {"radius": radius, "height": height, "nearest_vertices_indices": nearest_vertices_indices, "slicing_angles": slicing_angles}
+                info = {"radius": radius, "height": height, "attachment_positions": filtered_attachment_positions, "slicing_angles": slicing_angles}
                 write_pickle_data(info, os.path.join(save_dir, "mesh", f"{object_name}_info.pickle"))
 
             elif category == "ellipsoid":
                 # Save the mesh and other information
                 mesh.export(os.path.join(save_dir, "mesh", f"{object_name}.obj")) 
-                info = {"radius": radius, "ratio": ratio, "nearest_vertices_indices": nearest_vertices_indices, "slicing_angles": slicing_angles}
+                info = {"radius": radius, "ratio": ratio, "attachment_positions": filtered_attachment_positions, "slicing_angles": slicing_angles}
                 write_pickle_data(info, os.path.join(save_dir, "mesh", f"{object_name}_info.pickle"))
 
 
-            # To visualize these as large, noticeable points, we'll create a set of spheres at each vertex position
-            # Adjust the sphere radius as needed to make them clearly visible
-            for position in nearest_vertices_positions:
+            # Visualize  and save the attachment positions
+            for position in attachment_positions[0: attachment_positions.shape[0]: 2]:
+            # for position in filtered_attachment_positions[0: filtered_attachment_positions.shape[0]: 1]:
                 sphere = trimesh.creation.icosphere(radius=0.002)
                 sphere.apply_translation(position)
                 sphere.visual.face_colors = [250, 0, 0, 128]
                 meshes.append(sphere)
-
 
             spheres = trimesh.util.concatenate(meshes[2:])
             spheres.export(os.path.join(save_dir, "mesh", f"{object_name}_base.obj")) 

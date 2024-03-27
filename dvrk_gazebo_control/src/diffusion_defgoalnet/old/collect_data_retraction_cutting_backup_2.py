@@ -31,11 +31,11 @@ from behaviors import MoveToPose, TaskVelocityControl2
 import transformations
 import trimesh
 sys.path.append("../")
-from util.retraction_cutting_utils import get_eef_position
+from util.retraction_cutting_utils import get_y_to_x_ratio
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
-from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color
+from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting
 from utils.point_cloud_utils import pcd_ize, spherify_point_cloud_open3d
-
+from utils.mesh_utils import find_mesh_intersection_plane
 
 ROBOT_Z_OFFSET = 0.22    #0.25
 # angle_kuka_2 = -0.4
@@ -66,13 +66,12 @@ if __name__ == "__main__":
         custom_parameters=[
             {"name": "--num_envs", "type": int, "default": 1, "help": "Number of environments to create"},
             {"name": "--obj_name", "type": str, "default": 'cylinder_0', "help": "select variations of a primitive shape"},
-            {"name": "--headless", "type": str, "default": "False", "help": "headless mode"},
+            {"name": "--headless", "type": bool, "default": False, "help": "headless mode"},
             {"name": "--current_data_idx", "type": int, "default": 1, 
              "help": "index of the current data point, for a specific object."},
             {"name": "--data_category", "type": str, "default": "deformernet", "help": "deformernet or MP"}])
     
     num_envs = args.num_envs
-    args.headless = args.headless == "True"
     
     main_path = "/home/baothach/shape_servo_data/diffusion_defgoalnet"
 
@@ -121,13 +120,13 @@ if __name__ == "__main__":
 
     print("attachment_positions.shape:", attachment_positions.shape)
         
-    # sampled_indices = [0, 13]   # [0, 5]
-    sampled_indices = np.random.choice(attachment_positions.shape[0], 2, replace=False)
+    sampled_indices = [0, 5]   # [0, 15] [0, 6] [6, 2]
+    # sampled_indices = np.random.choice(attachment_positions.shape[0], 2, replace=False)
     (start_idx, end_idx) =  (sampled_indices[0], sampled_indices[1]) \
                         if attachment_positions[sampled_indices[0]][0] < attachment_positions[sampled_indices[1]][0] \
                         else  (sampled_indices[1], sampled_indices[0])
-    print("***start_idx, end_idx:", start_idx, end_idx)
-    # y_to_x = get_y_to_x_ratio(attachment_positions[start_idx], attachment_positions[end_idx])
+    # print("***start_idx, end_idx:", start_idx, end_idx)
+    y_to_x = get_y_to_x_ratio(attachment_positions[start_idx], attachment_positions[end_idx])
     
     # print("*******y_to_x.shape:", y_to_x)
 
@@ -306,7 +305,8 @@ if __name__ == "__main__":
     Main stuff is here
     '''
     rospy.init_node('isaac_grasp_client')
-    print_color(f"Object name: {args.obj_name}, Context idx: {args.current_data_idx}")
+    rospy.logerr("======Loading object ... " + str(args.obj_name))  
+    rospy.logerr(f"Data Category: {args.data_category}")
  
 
     # Some important paramters
@@ -378,7 +378,7 @@ if __name__ == "__main__":
                 
 
                 if first_time:                    
-                    attachment_positions += np.array([soft_pose.p.x, soft_pose.p.y, soft_pose.p.z])
+
                     gym.refresh_particle_state_tensor(sim)
                     saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
                     saved_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
@@ -388,7 +388,7 @@ if __name__ == "__main__":
                         context = deepcopy(attachment_positions[indices])              
                     elif start_idx < end_idx:
                         context = deepcopy(attachment_positions[start_idx:end_idx+1])
-                    # context += np.array([soft_pose.p.x, soft_pose.p.y, soft_pose.p.z])
+                    context += np.array([soft_pose.p.x, soft_pose.p.y, soft_pose.p.z])
                     # context_pcd = pcd_ize(context, color=(1,0,0), vis=True)
                     # context_sphere_pcd = spherify_point_cloud_open3d(context, color=(1,0,0), vis=False)
                     # pcd = pcd_ize(get_object_particle_state(gym, sim), color=(0,0,0), vis=False)
@@ -471,47 +471,44 @@ if __name__ == "__main__":
                 saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
                 saved_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
 
-                eef_positions = get_eef_position(attachment_positions[start_idx,:2], 
-                                                attachment_positions[end_idx,:2], 
-                                                45, obj_height*1, vis=False)
 
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state) 
 
 
-            # magnitude = obj_height * 0.8  #0.1
-            # K = 1./y_to_x[1]    # 1./y_to_x[angle_idx]
-            # y = -np.sqrt(magnitude**2 / (1 + K**2))
-            # x = K * y
+            magnitude = obj_height * 0.8  #0.1
+            K = 1./y_to_x[angle_idx]    # 1./y_to_x[angle_idx]
+            y = -np.sqrt(magnitude**2 / (1 + K**2))
+            x = K * y
             
-            # # magnitude = obj_height * 0.7        
-            # # K = 1./y_to_x[0]    # 1./y_to_x[angle_idx]
-            # # y = np.sqrt(magnitude**2 / (1 + K**2))
-            # # if angle_idx == 1:
-            # #     y *= -1
-            # # x = K * y  
-            # # if x > 0:
-            # #     x *= 1.3
+            # magnitude = obj_height * 0.7        
+            # K = 1./y_to_x[0]    # 1./y_to_x[angle_idx]
+            # y = np.sqrt(magnitude**2 / (1 + K**2))
+            # if angle_idx == 1:
+            #     y *= -1
+            # x = K * y  
+            # if x > 0:
+            #     x *= 1.3
                       
-            # delta_x, delta_y, delta_z = x, y, 0.00
+            delta_x, delta_y, delta_z = x, y, 0.00
             delta_alpha, delta_beta, delta_gamma = 1e-6, 1e-6, 1e-6   
 
-            # print("select x, y, z, a, b, g:", delta_x, delta_y, delta_z, " | ", delta_alpha, delta_beta, delta_gamma)           
+            print("select x, y, z, a, b, g:", delta_x, delta_y, delta_z, " | ", delta_alpha, delta_beta, delta_gamma)           
 
 
             # print_lists_with_formatting([attachment_positions[start_idx], attachment_positions[end_idx],
             #                        (attachment_positions[start_idx] + attachment_positions[end_idx]) / 2], 3, "attchment pos:")
             # x = delta_x + init_pose[0,3]
             # y = delta_y + init_pose[1,3]
-            mid_point = (attachment_positions[start_idx] + attachment_positions[end_idx]) / 2 
+            mid_point = (attachment_positions[start_idx] + attachment_positions[end_idx]) / 2 \
+                        + np.array([soft_pose.p.x, soft_pose.p.y, soft_pose.p.z])
 
             
             # print_lists_with_formatting([init_pose[:3,3], mid_point], 3, "init_pose, mid_point:")
 
-            eef_position = eef_positions[angle_idx]
-            # x, y = -mid_point[0] + delta_x, -mid_point[1] + delta_y
-            x, y = -eef_position[0], -eef_position[1]
-            z = init_pose[2,3]  #delta_z + init_pose[2,3]
+            
+            x, y = -mid_point[0] + delta_x, -mid_point[1] + delta_y
+            z = delta_z + init_pose[2,3]
             alpha = delta_alpha + init_eulers[0]
             beta = delta_beta + init_eulers[1]
             gamma = delta_gamma + init_eulers[2]
@@ -527,8 +524,7 @@ if __name__ == "__main__":
             if main_ins_pos <= 0.042:
                 rospy.logerr("Exceed joint constraint")
                 group_count += 1
-                # state = "reset"
-                all_done = True
+                state = "reset"
 
 
             contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
@@ -542,7 +538,7 @@ if __name__ == "__main__":
             else:      
                 action = tvc_behavior.get_action() 
                 # print(f"{gym.get_sim_time(sim) - closed_loop_start_time:.2f} s") 
-                if action is not None and gym.get_sim_time(sim) - closed_loop_start_time <= 1.5: 
+                if action is not None and gym.get_sim_time(sim) - closed_loop_start_time <= 2.0: 
                     gym.set_actor_dof_velocity_targets(robot.env_handle, robot.robot_handle, action.get_joint_position())
                 else:   
 
