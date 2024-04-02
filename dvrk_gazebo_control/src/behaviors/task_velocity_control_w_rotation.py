@@ -116,7 +116,8 @@ class TaskVelocityControl2(Behavior):
 
             # delta_q = q_vel * self.dt
             # desired_q_pos = np.copy(q_cur) + delta_q
-            desired_q_vel = q_vel * 4
+            # desired_q_vel = q_vel * 4
+            desired_q_vel = q_vel * 2
 
 
             # print("desired_q_vel:", desired_q_vel)

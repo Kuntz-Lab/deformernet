@@ -24,7 +24,7 @@ from utils.isaac_utils import fix_object_frame, get_pykdl_client
 import pickle
 import timeit
 from copy import deepcopy
-
+from collections import defaultdict
 
 from core import Robot
 from behaviors import MoveToPose, TaskVelocityControl2
@@ -33,7 +33,7 @@ import trimesh
 sys.path.append("../")
 from util.retraction_cutting_utils import get_eef_position
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
-from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color
+from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data
 from utils.point_cloud_utils import pcd_ize, spherify_point_cloud_open3d
 
 
@@ -67,8 +67,8 @@ if __name__ == "__main__":
             {"name": "--num_envs", "type": int, "default": 1, "help": "Number of environments to create"},
             {"name": "--obj_name", "type": str, "default": 'cylinder_0', "help": "select variations of a primitive shape"},
             {"name": "--headless", "type": str, "default": "False", "help": "headless mode"},
-            {"name": "--current_data_idx", "type": int, "default": 1, 
-             "help": "index of the current data point, for a specific object."},
+            # {"name": "--current_data_idx", "type": int, "default": 1, 
+            #  "help": "index of the current data point, for a specific object."},
             {"name": "--data_category", "type": str, "default": "deformernet", "help": "deformernet or MP"}])
     
     num_envs = args.num_envs
@@ -306,8 +306,6 @@ if __name__ == "__main__":
     Main stuff is here
     '''
     rospy.init_node('isaac_grasp_client')
-    print_color(f"Object name: {args.obj_name}, Context idx: {args.current_data_idx}")
- 
 
     # Some important paramters
     init()  # Initilize 2 robots' joints
@@ -317,7 +315,16 @@ if __name__ == "__main__":
 
     data_recording_path = os.path.join(main_path, "data/retraction_cutting")
     os.makedirs(data_recording_path, exist_ok=True)
-
+    
+    global_statistics_path = os.path.join(data_recording_path, "global_statistics.pickle")
+    if not os.path.exists(global_statistics_path):
+        global_statistics = defaultdict(int)
+        curr_data_idx = 0
+    else:       
+        global_statistics = read_pickle_data(global_statistics_path)
+        curr_data_idx = global_statistics[f"{args.obj_name}_count"]
+        
+    print_color(f"Object name: {args.obj_name}, Context idx: {curr_data_idx}")
 
     terminate_count = 0
     sample_count = 0
@@ -337,7 +344,7 @@ if __name__ == "__main__":
     angle_idx = 0
     recorded_goal_pcs = []
     segmentationId_dict = {"robot_1": 10, "robot_2": 11, "cylinder": 12}
-    visualization = True
+    visualization = False
 
     dc_client = GraspDataCollectionClient()
     
@@ -422,16 +429,21 @@ if __name__ == "__main__":
             mtp_behavior = MoveToPose(target_pose, robot, sim_params.dt, 2)
             if mtp_behavior.is_complete_failure():
                 rospy.logerr('Can not find moveit plan to grasp. Ignore this grasp.\n')  
-                state = "reset"                
+                # state = "reset"  
+                all_done = True              
             else:
                 rospy.loginfo('Sucesfully found a PRESHAPE moveit plan to grasp.\n')
                 state = "move to preshape"
                 # rospy.loginfo('Moving to this preshape goal: ' + str(cartesian_goal))
 
-            pc_init = get_partial_pointcloud_vectorized(gym, sim, envs_obj[0], cam_handles[0], cam_props, 
-                                                    segmentationId_dict, object_name="deformable", color=None, min_z=0.005, 
-                                                    visualization=False, device="cpu")  
+            camera_args = [gym, sim, envs_obj[0], cam_handles[0], cam_props, 
+                           segmentationId_dict, "deformable", None, 0.002, False, "cpu"]
+            pc_init = get_partial_pointcloud_vectorized(*camera_args)  
             full_pc_init = get_object_particle_state(gym, sim)
+
+            # context_sphere_pcd = spherify_point_cloud_open3d(context, color=(1,0,0), vis=False)
+            # pcd = pcd_ize(pc_init, color=(0,0,0), vis=False)
+            # open3d.visualization.draw_geometries([pcd, context_sphere_pcd])
 
 
         if state == "move to preshape":         
@@ -547,9 +559,7 @@ if __name__ == "__main__":
                 else:   
 
                     rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
-                    partial_goal_pc = get_partial_pointcloud_vectorized(gym, sim, envs_obj[0], cam_handles[0], cam_props, 
-                                                            segmentationId_dict, object_name="deformable", color=None, min_z=0.005, 
-                                                            visualization=False, device="cpu")  
+                    partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
                     full_pc = get_object_particle_state(gym, sim)
 
                     recorded_goal_pcs.append((full_pc, partial_goal_pc))
@@ -583,13 +593,16 @@ if __name__ == "__main__":
             all_done = True 
 
         if angle_idx >= max_sample_count:    
-            full_goal_pcs = (recorded_goal_pcs[0][0], recorded_goal_pcs[1][0])
-            partial_goal_pcs = (recorded_goal_pcs[0][1], recorded_goal_pcs[1][1])
+            # full_goal_pcs = (recorded_goal_pcs[0][0], recorded_goal_pcs[1][0])
+            # partial_goal_pcs = (recorded_goal_pcs[0][1], recorded_goal_pcs[1][1])
 
-            data = {"full_goal_pcs": full_goal_pcs, "partial_goal_pcs": partial_goal_pcs,
-                    "full_init_pc": full_pc_init, "partial_init_pc": full_pc_init, 
-                    "context": context}
-            write_pickle_data(data, os.path.join(data_recording_path, f"{args.obj_name}_{args.current_data_idx}.pickle"))
+            # data = {"full_goal_pcs": full_goal_pcs, "partial_goal_pcs": partial_goal_pcs,
+            #         "full_init_pc": full_pc_init, "partial_init_pc": pc_init, 
+            #         "context": context}
+            # write_pickle_data(data, os.path.join(data_recording_path, f"{args.obj_name}_{curr_data_idx}.pickle"))
+            # global_statistics[f"{args.obj_name}_count"] += 1
+            # write_pickle_data(global_statistics, global_statistics_path)
+            
             all_done = True
             rospy.logerr("Simulation succesfully completed. Data saved!")
 

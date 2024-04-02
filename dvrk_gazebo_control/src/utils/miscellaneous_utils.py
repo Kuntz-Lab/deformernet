@@ -126,9 +126,9 @@ def read_pickle_data(data_path):
     with open(data_path, 'rb') as handle:
         return pickle.load(handle)      
 
-def write_pickle_data(data, data_path):
+def write_pickle_data(data, data_path, protocol=3):
     with open(data_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=3)    
+        pickle.dump(data, handle, protocol=protocol)    
         
 
 def read_youngs_value_from_urdf(urdf_file):
