@@ -103,7 +103,7 @@ if __name__ == "__main__":
     sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, sim_params)
 
     # Get primitive shape dictionary to know the dimension of the object   
-    object_meshes_path = f"/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_{object_category}Pa_eval"    
+    object_meshes_path = f"/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_{object_category}Pa"    
     with open(os.path.join(object_meshes_path, f"primitive_dict_{args.prim_name}.pickle"), 'rb') as handle:
         data = pickle.load(handle)    
     if args.prim_name == "box":
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
-    asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/multi_{object_category}Pa_eval"
+    asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/multi_{object_category}Pa"
     soft_asset_file = args.obj_name + ".urdf"    
 
 
@@ -303,17 +303,19 @@ if __name__ == "__main__":
     state = "home"
     
     
-    data_recording_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/multi_{object_category}Pa/evaluate/goal_data"
+    data_recording_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/multi_{object_category}Pa/data"
 
+    mp_data_recording_path = f"/home/baothach/shape_servo_data/manipulation_points/bimanual_physical_dvrk/multi_{object_category}Pa/mp_data"
  
     os.makedirs(data_recording_path, exist_ok=True)
-
+    os.makedirs(mp_data_recording_path, exist_ok=True)
 
     terminate_count = 0
     sample_count = 0
     frame_count = 0
     group_count = 0
     data_point_count = len(os.listdir(data_recording_path))
+    mp_data_point_count = len(os.listdir(mp_data_recording_path))
     max_group_count = 150000
     max_sample_count = 1    #2
     max_data_point_count = 10000     #15000
@@ -432,8 +434,8 @@ if __name__ == "__main__":
                 state = "move to preshape"
 
 
-            # pc_init = get_partial_pointcloud_vectorized(*camera_args) + shift
-            # full_pc_init = get_object_particle_state(gym, sim) + shift
+            pc_init = get_partial_pointcloud_vectorized(*camera_args) + shift
+            full_pc_init = get_object_particle_state(gym, sim) + shift
 
             # ys = get_object_particle_state(gym, sim)[:,1]
             # object_length = abs(max(ys)-min(ys))
@@ -597,12 +599,21 @@ if __name__ == "__main__":
                 state = "reset"
 
             else:
-                if frame_count == 0:
+                if frame_count % 15 == 0:
                     full_pc_on_trajectory.append(get_object_particle_state(gym, sim) + shift)
                     pc_on_trajectory.append(get_partial_pointcloud_vectorized(*camera_args) + shift)
                     curr_trans_on_trajectory_1.append(get_pykdl_client(robot_1.get_arm_joint_positions())[1])
                     curr_trans_on_trajectory_2.append(get_pykdl_client(robot_2.get_arm_joint_positions())[1])
                               
+                    if frame_count == 0:
+                        mp_mani_point_1 = deepcopy(gym.get_actor_rigid_body_states(robot_1.env_handle, robot_1.robot_handle, gymapi.STATE_POS)[-3])
+                        mp_mani_point_2 = deepcopy(gym.get_actor_rigid_body_states(robot_2.env_handle, robot_2.robot_handle, gymapi.STATE_POS)[-3])
+
+                    terminate_count += 1
+                    if terminate_count >= 10:
+                        print("+++ Taking too long")
+                        state = "reset"
+                        terminate_count = 0
                 frame_count += 1           
                 
                 action_1 = tvc_behavior_1.get_action()  
@@ -647,16 +658,26 @@ if __name__ == "__main__":
                                 "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
                                 "mani_point": mani_point, "obj_name": args.obj_name}
 
-                        # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
-                        #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
-                        with open(os.path.join(data_recording_path, f"{args.obj_name}.pickle"), 'wb') as handle:
-                            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)    
-
+                        with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
+                            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
                         print("New data_point_count:", data_point_count)
                         data_point_count += 1       
 
 
-   
+                    if sample_count == 0:
+                        for j in range(1,len(pc_on_trajectory)):    
+                            partial_pcs = (pc_init, pc_on_trajectory[j])
+                            full_pcs = (full_pc_init, full_pc_on_trajectory[j])
+
+                            mani_point = np.array(list(mp_mani_point_1["pose"][0]) + list(mp_mani_point_2["pose"][0])) + np.concatenate((shift, shift))
+                            data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
+                                    "mani_point": mani_point, "obj_name": args.obj_name}
+                            with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
+                                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
+                            
+
+                            print("New mp_data_point_count:", mp_data_point_count)
+                            mp_data_point_count += 1      
 
                     frame_count = 0
                     terminate_count = 0

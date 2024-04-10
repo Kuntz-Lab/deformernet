@@ -2,10 +2,10 @@ import os
 import pickle
 
 
-urdf_path = "/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/multi_box_10kPa"
+urdf_path = "/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/multi_box_5kPa_eval"
 os.makedirs(urdf_path,exist_ok=True)
 
-mesh_path = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_10kPa"
+mesh_path = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_5kPa_eval"
 mesh_relative_path = "/".join(mesh_path.split("/")[-3:])
 
 shape_name = "box"

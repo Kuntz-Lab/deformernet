@@ -11,7 +11,7 @@ headless = True
 start_time = timeit.default_timer()
 
 # prim_names = ["box", "cylinder", "hemis"] #["box", "cylinder", "hemis"]
-stiffnesses = ["1k", "5k", "10k"]  #["1k", "5k", "10k"] 
+stiffnesses = ["5k", "10k"]  #["1k", "5k", "10k"] 
 
 prim_name = "box"
 for stiffness in stiffnesses:

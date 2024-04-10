@@ -119,9 +119,9 @@ def create_hemis_mesh_datatset(save_mesh_dir, num_mesh=100, save_pickle=True, se
 
 ## 1000-200, 5000-1000, 10000-1000
 
-mesh_dir = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_10kPa"
+mesh_dir = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_5kPa_eval"
 os.makedirs(mesh_dir, exist_ok=True)
-create_box_mesh_datatset(mesh_dir, type='10k', num_mesh=100)
+create_box_mesh_datatset(mesh_dir, type='5k', num_mesh=100, seed=2024) # seed=0
 
 # mesh_dir = "/home/baothach/sim_data/Custom/Custom_mesh/multi_cylinders_1000Pa"
 # create_cylinder_mesh_datatset(mesh_dir)

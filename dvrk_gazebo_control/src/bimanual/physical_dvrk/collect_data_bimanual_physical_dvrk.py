@@ -318,7 +318,7 @@ if __name__ == "__main__":
     mp_data_point_count = len(os.listdir(mp_data_recording_path))
     max_group_count = 150000
     max_sample_count = 1    #2
-    max_data_point_count = 10000     #15000
+    max_data_point_count = 210000     #15000
     # if args.obj_name == 'box_64':
     #     max_data_point_per_variation = 9600
     # else:
@@ -599,7 +599,7 @@ if __name__ == "__main__":
                 state = "reset"
 
             else:
-                if frame_count % 15 == 0:
+                if frame_count % 150 == 0:
                     full_pc_on_trajectory.append(get_object_particle_state(gym, sim) + shift)
                     pc_on_trajectory.append(get_partial_pointcloud_vectorized(*camera_args) + shift)
                     curr_trans_on_trajectory_1.append(get_pykdl_client(robot_1.get_arm_joint_positions())[1])
@@ -658,8 +658,8 @@ if __name__ == "__main__":
                                 "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
                                 "mani_point": mani_point, "obj_name": args.obj_name}
 
-                        with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
-                            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
+                        # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
+                        #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
                         print("New data_point_count:", data_point_count)
                         data_point_count += 1       
 
@@ -672,8 +672,8 @@ if __name__ == "__main__":
                             mani_point = np.array(list(mp_mani_point_1["pose"][0]) + list(mp_mani_point_2["pose"][0])) + np.concatenate((shift, shift))
                             data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
                                     "mani_point": mani_point, "obj_name": args.obj_name}
-                            with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
-                                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
+                            # with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
+                            #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
                             
 
                             print("New mp_data_point_count:", mp_data_point_count)
