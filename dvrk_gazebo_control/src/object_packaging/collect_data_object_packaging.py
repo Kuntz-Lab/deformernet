@@ -24,7 +24,8 @@ from utils.isaac_utils import isaac_format_pose_to_PoseStamped as to_PoseStamped
 from utils.isaac_utils import fix_object_frame, get_pykdl_client
 from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
-import pickle
+from utils.point_cloud_utils import pcd_ize
+import pickle5 as pickle
 import timeit
 from copy import deepcopy
 from scipy import interpolate
@@ -70,13 +71,14 @@ if __name__ == "__main__":
             {"name": "--num_envs", "type": int, "default": 1, "help": "Number of environments to create"},
             {"name": "--num_objects", "type": int, "default": 10, "help": "Number of objects in the bin"},
             {"name": "--prim_name", "type": str, "default": "box", "help": "Select primitive shape. Options: box, cylinder, hemis"},
-            {"name": "--stiffness", "type": str, "default": "1k", "help": "Select object stiffness. Options: 1k, 5k, 10k"},
+            {"name": "--stiffness", "type": str, "default": "5k", "help": "Select object stiffness. Options: 1k, 5k, 10k"},
             {"name": "--obj_name", "type": int, "default": 0, "help": "select variations of a primitive shape"},
             {"name": "--headless", "type": str, "default": "False", "help": "headless mode"}])
 
     num_envs = args.num_envs
     
     args.headless = args.headless == "True"
+    mesh_name = f"{args.prim_name}_{args.obj_name%10}"
     args.obj_name = f"{args.prim_name}_{args.obj_name}"
     object_category = f"{args.prim_name}_{args.stiffness}"
 
@@ -84,8 +86,8 @@ if __name__ == "__main__":
     sim_type = gymapi.SIM_FLEX
     sim_params = gymapi.SimParams()
     sim_params.up_axis = gymapi.UP_AXIS_Z
-    # sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
-    sim_params.gravity = gymapi.Vec3(0.0, 0.0, 0)
+    sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
+    # sim_params.gravity = gymapi.Vec3(0.0, 0.0, 0)
     if sim_type is gymapi.SIM_FLEX:
         sim_params.substeps = 4
         # print("=================sim_params.dt:", sim_params.dt)
@@ -103,20 +105,22 @@ if __name__ == "__main__":
     sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, sim_params)
 
     # Get primitive shape dictionary to know the dimension of the object   
-    object_meshes_path = f"/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_{object_category}Pa"    
-    with open(os.path.join(object_meshes_path, f"primitive_dict_{args.prim_name}.pickle"), 'rb') as handle:
-        data = pickle.load(handle)    
     if args.prim_name == "box":
+        object_meshes_path = f"/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_{object_category}Pa"    
+        with open(os.path.join(object_meshes_path, f"primitive_dict_{args.prim_name}.pickle"), 'rb') as handle:
+            data = pickle.load(handle)       
         h = data[args.obj_name]["height"]
         w = data[args.obj_name]["width"]
         thickness = data[args.obj_name]["thickness"]
     elif args.prim_name == "cylinder":
-        r = data[args.obj_name]["radius"]
-        h = data[args.obj_name]["height"]
+        object_meshes_path = f"/home/baothach/sim_data/Custom/Custom_mesh/multi_{object_category}Pa"    
+        with open(os.path.join(object_meshes_path, f"primitive_dict_{args.prim_name}.pickle"), 'rb') as handle:
+            data = pickle.load(handle)       
+        r = data[args.obj_name]["radius"] / 2
+        h = data[args.obj_name]["height"] / 2
     elif args.prim_name == "hemis":
         r = data[args.obj_name]["radius"]
         o = data[args.obj_name]["origin"]
-
 
     # add ground plane
     plane_params = gymapi.PlaneParams()
@@ -160,30 +164,34 @@ if __name__ == "__main__":
     print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
-    asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa"
-    soft_asset_file = args.obj_name + ".urdf"    
+    # asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa"
+    # soft_asset_file = args.obj_name + ".urdf"    
+    # asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/object_packaging"
+    # soft_asset_file = f"dog_1.urdf"
 
+    if args.prim_name == "box":
+        asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa"
+        soft_asset_file = args.obj_name + ".urdf"   
+    elif args.prim_name == "cylinder":
+        asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/bimanual_multi_{object_category}Pa" 
+        soft_asset_file = args.obj_name + ".urdf"
+
+    # asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa"
+    # soft_asset_file = args.obj_name + ".urdf" 
 
     soft_pose = gymapi.Transform()
     
-    # soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, thickness/2*0.7)
     if args.prim_name == "box": 
         soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, thickness/2 + 0.001)
         soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
     elif args.prim_name == "cylinder": 
-        soft_pose.p = gymapi.Vec3(0, -two_robot_offset/2, r)
+        soft_pose.p = gymapi.Vec3(0, -two_robot_offset/2, r + 0.001)
         soft_pose.r = gymapi.Quat(0.7071068, 0, 0, 0.7071068)
     elif args.prim_name == "hemis":
         soft_pose = gymapi.Transform()
         soft_pose.p = gymapi.Vec3(0, -two_robot_offset/2, -o)
 
-
     soft_thickness = 0.001 #0.0005#0.0005    # important to add some thickness to the soft body to avoid interpenetrations
-
-
-
-
-
 
     asset_options = gymapi.AssetOptions()
     asset_options.fix_base_link = True
@@ -193,7 +201,34 @@ if __name__ == "__main__":
     soft_asset = gym.load_asset(sim, asset_root, soft_asset_file, asset_options)
 
         
+    # Load rigid kidney asset
+    rigid_asset_root = "/home/baothach/sim_data/Custom/Custom_urdf/object_packaging"
+    rigid_asset_file = f"amazon_box.urdf"
+    amazon_box_scale = 1.5
     
+    rigid_pose = gymapi.Transform()
+    # rigid_pose.p = gymapi.Vec3(0.3, -two_robot_offset/2 - 0.1, 0.00) 
+    # rigid_pose.p = gymapi.Vec3(w / 2 + 0.1*amazon_box_scale/2 + 0.05, -two_robot_offset/2, 0.00) 
+    
+    object_span = w/2 if args.prim_name == "box" else r
+    # box_x = np.random.uniform(0.2, 0.3) * np.random.choice([-1, 1])
+    box_x = np.random.uniform(object_span + 0.1*amazon_box_scale/2 + 0.05, 0.3) * np.random.choice([-1, 1])
+    box_y = np.random.uniform(-0.1, 0.1)
+    rigid_pose.p = gymapi.Vec3(box_x, box_y-two_robot_offset/2, 0.00)
+    print_color(f"rigid_pose.p: {rigid_pose.p}", "green")
+        
+    # kidney_angle, tissue_angle = get_kidney_and_tissue_angle()  # get random kidney and tissue orientations
+    kidney_angle = 0#np.pi/6
+    eulers = [kidney_angle, 0, np.pi/2]
+    quat = transformations.quaternion_from_euler(*eulers)
+    rigid_pose.r = gymapi.Quat(*list(quat))
+
+    rigid_asset_options = gymapi.AssetOptions()
+    rigid_asset_options.fix_base_link = True
+    rigid_asset_options.thickness = 0.003 # 0.002
+    rigid_asset_options.disable_gravity = True    
+    
+    rigid_asset = gym.load_asset(sim, rigid_asset_root, rigid_asset_file, rigid_asset_options)    
  
     
     # set up the env grid
@@ -229,7 +264,7 @@ if __name__ == "__main__":
 
         # add soft obj        
         env_obj = env
-        env_obj = gym.create_env(sim, env_lower, env_upper, num_per_row)
+        # env_obj = gym.create_env(sim, env_lower, env_upper, num_per_row)
         envs_obj.append(env_obj)        
         
         soft_actor = gym.create_actor(env_obj, soft_asset, soft_pose, "soft", i, 0)
@@ -238,7 +273,11 @@ if __name__ == "__main__":
         kuka_handles.append(kuka_handle)
         kuka_handles_2.append(kuka_2_handle)
 
-
+        # add rigid kidney obj
+        rigid_actor = gym.create_actor(env, rigid_asset, rigid_pose, 'rigid', i, 0, segmentationId=10)
+        color = gymapi.Vec3(1,0,0)
+        gym.set_rigid_body_color(env, rigid_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+        
 
     dof_props_2 = gym.get_asset_dof_properties(kuka_asset)
     dof_props_2["driveMode"].fill(gymapi.DOF_MODE_POS)
@@ -271,14 +310,10 @@ if __name__ == "__main__":
     cam_props.width = cam_width
     cam_props.height = cam_height
 
-    # cam_positions.append(gymapi.Vec3(0.17, -0.62-(two_robot_offset/2 - 0.42), 0.2))
-    # cam_targets.append(gymapi.Vec3(0.0, 0.40-0.86-(two_robot_offset/2 - 0.42), 0.01))  
-
-    # cam_positions.append(gymapi.Vec3(-0.3, soft_pose.p.y, 0.25))   # put camera on the side of object
+    # cam_positions.append(gymapi.Vec3(-0.0, soft_pose.p.y + 0.001, 0.5))   # put camera on top of object
     # cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
-
-    cam_positions.append(gymapi.Vec3(-0.0, soft_pose.p.y + 0.001, 0.5))   # put camera on top of object
-    cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
+    cam_positions.append(gymapi.Vec3(-0.0, -two_robot_offset/2 + 0.001, 0.5))   # put camera on top of object
+    cam_targets.append(gymapi.Vec3(0.0, -two_robot_offset/2, 0.01))
 
     for i, env_obj in enumerate(envs_obj):
             cam_handles.append(gym.create_camera_sensor(env_obj, cam_props))
@@ -306,28 +341,24 @@ if __name__ == "__main__":
     state = "home"
     
     
-    data_recording_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/multi_{object_category}Pa/data"
+    data_recording_path = f"/home/baothach/shape_servo_data/diffusion_defgoalnet/object_packaging/multi_{object_category}Pa/eval_data"
 
-    mp_data_recording_path = f"/home/baothach/shape_servo_data/manipulation_points/bimanual_physical_dvrk/multi_{object_category}Pa/mp_data"
  
     os.makedirs(data_recording_path, exist_ok=True)
-    os.makedirs(mp_data_recording_path, exist_ok=True)
 
     terminate_count = 0
     sample_count = 0
     frame_count = 0
     group_count = 0
     data_point_count = len(os.listdir(data_recording_path))
-    mp_data_point_count = len(os.listdir(mp_data_recording_path))
     max_group_count = 150000
     max_sample_count = 3    #2
     
     
-    # max_data_point_count = 5000
-    # max_data_point_per_variation = data_point_count + 50  
+    max_data_point_count = 100000
+    max_data_point_per_variation = data_point_count + 1  
 
-    max_mp_data_point_count = 2000
-    max_mp_data_point_per_variation = mp_data_point_count + 20  
+
 
     pc_on_trajectory = []
     full_pc_on_trajectory = []
@@ -338,13 +369,19 @@ if __name__ == "__main__":
     switch = True
     total_computation_time = 0
     data = []
+    action_count = 0
+    all_recorded_pcs = []
+    all_recorded_full_pcs = []
     
 
     dc_client = GraspDataCollectionClient()
-    segmentationId_dict = {"robot_1": 10, "robot_2": 11, "cylinder": 12}
+    segmentationId_dict = {"robot_11": 10, "robot_2": 11, "rigid": 10}
     camera_args = [gym, sim, envs_obj[0], cam_handles[0], cam_props, 
                     segmentationId_dict, "deformable", None, 0.002, False, "cpu"]    
+    rigid_camera_args = [gym, sim, envs_obj[0], cam_handles[0], cam_props, 
+                        segmentationId_dict, "rigid", None, 0.002, False, "cpu"] 
     visualization = False
+    output_file = f"/home/baothach/Downloads/test_cam_views_{data_point_count}.png" 
 
 
     
@@ -354,6 +391,38 @@ if __name__ == "__main__":
 
     robot_2 = Robot(gym, sim, envs[0], kuka_handles_2[0])
     robot_1 = Robot(gym, sim, envs[0], kuka_handles[0])
+
+    
+    # def check_points_enclosed_by_square(point_cloud, square_size=0.1 * amazon_box_scale):
+    #     square_center = [rigid_pose.p.x, rigid_pose.p.y, 0]
+    #     square_rotation = [rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z]
+    #     rotation_matrix = open3d.geometry.get_rotation_matrix_from_quaternion(square_rotation)
+    #     inv_rotation_matrix = np.linalg.inv(rotation_matrix)
+    #     translated_points = point_cloud[:, :3] - square_center
+    #     transformed_points = translated_points @ inv_rotation_matrix.T
+    #     half_size = square_size / 2
+    #     x_min, x_max = -half_size, half_size
+    #     y_min, y_max = -half_size, half_size
+    #     enclosed = np.all((transformed_points[:, 0] >= x_min) & (transformed_points[:, 0] <= x_max) &
+    #                     (transformed_points[:, 1] >= y_min) & (transformed_points[:, 1] <= y_max))
+    #     return enclosed
+
+    # square = open3d.geometry.TriangleMesh.create_box(width=0.1 * amazon_box_scale, height=0.2, depth=0.1 * amazon_box_scale)
+    # translation = np.array([-(0.1 * amazon_box_scale) / 2, 0, -(0.1 * amazon_box_scale) / 2])
+    # square.translate(translation)
+    # trans = np.eye(4)
+    # trans[:3, 3] = [rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z]
+    # quat = [rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z]
+    # rot_matrix = open3d.geometry.get_rotation_matrix_from_quaternion(quat)
+    # trans[:3, :3] = rot_matrix
+    # square.transform(trans)
+    
+    # coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1 * amazon_box_scale)
+    # coor.translate((rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z))
+
+    # def visualize_enclosure(pc):
+    #     pcd = pcd_ize(pc)
+    #     open3d.visualization.draw_geometries([square, pcd, coor])
 
     while (not close_viewer) and (not all_done): 
 
@@ -379,9 +448,9 @@ if __name__ == "__main__":
                                         resolution=[cam_props.height, cam_props.width], output_file=output_file)
 
             if frame_count == 10:
+                # visualize_enclosure(get_object_particle_state(gym, sim))
                 rospy.loginfo("**Current state: " + state + ", current sample count: " + str(sample_count))
                 
-
                 if first_time:                    
                     gym.refresh_particle_state_tensor(sim)
                     saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
@@ -395,7 +464,8 @@ if __name__ == "__main__":
                     open3d.io.write_point_cloud("/home/baothach/shape_servo_data/multi_grasps/1.pcd", pcd) # save_grasp_visual_data , point cloud of the object
                     pc_ros_msg = dc_client.seg_obj_from_file_client(pcd_file_path = "/home/baothach/shape_servo_data/multi_grasps/1.pcd", align_obj_frame = False).obj
                     pc_ros_msg = fix_object_frame(pc_ros_msg)
-                
+
+                   
                 state = "generate preshape"                
                 frame_count = 0    
 
@@ -439,13 +509,6 @@ if __name__ == "__main__":
             pc_init = get_partial_pointcloud_vectorized(*camera_args) + shift
             full_pc_init = get_object_particle_state(gym, sim) + shift
 
-            # ys = get_object_particle_state(gym, sim)[:,1]
-            # object_length = abs(max(ys)-min(ys))
-            # print("object_length:", object_length)
-            # ee_loc_on_obj = abs(cartesian_goal_2.position.y-soft_pose.p.y) + object_length/2
-            # print("where ee:", ee_loc_on_obj)  # 0.85 and 0.5
-            # ee_ratio = ee_loc_on_obj/object_length
-            # print("ee_ratio:", ee_ratio)
 
 
         if state == "move to preshape":         
@@ -505,63 +568,36 @@ if __name__ == "__main__":
 
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state) 
-            
-            if args.prim_name in ["box", "cylinder"]:
-                max_x, max_y, max_z = 0.2, 0.15, 0.2
 
-                # print("computed max:", max_x, max_y, max_z)
-            # elif args.prim_name == "hemis":    
-            #     # print("ee_ratio:", ee_ratio)
-            #     ee_ratio_val = [0.5, 0.85]
-            #     max_val = np.array([object_length/2 * 3/4, r/0.2 * 0.08])
-            #     f = interpolate.interp1d(ee_ratio_val, max_val, fill_value='extrapolate') 
-            #     max_x = f(ee_ratio)
-            #     max_y, max_z = deepcopy(max_x), deepcopy(max_x)
-            #     # print("computed max:", max_x, max_y, max_z)
-            #     max_z *= 3/4                
-            # else:
-            #     raise Exception("Wrong object category")
+            if action_count == 0:
+                delta_x_1, delta_y_1, delta_z_1 = (0, 0.00, 0.15)
+                delta_x_2, delta_y_2, delta_z_2 = (0, 0.00, 0.15)
+            elif action_count == 1:
+                y_displacement = rigid_pose.p.y + two_robot_offset/2
+                delta_x_1, delta_y_1, delta_z_1 = (rigid_pose.p.x, y_displacement, 0)
+                delta_x_2, delta_y_2, delta_z_2 = (-rigid_pose.p.x, -y_displacement, 0)                
+            elif action_count == 2:
+                # delta_x_1, delta_y_1, delta_z_1 = (0, 0.04, -0.1)
+                # delta_x_2, delta_y_2, delta_z_2 = (0, 0.04, -0.1)
+                box_size = 0.1 * amazon_box_scale
+                if h > box_size:
+                    y_displacement = min((h - box_size) * 0.5 + 0.03, h * 0.5 - 0.01)   
+                    print("box size, h, y_displacement:", box_size, h, y_displacement)            
+   
+                else:
+                    y_displacement = 0.03           
+                delta_x_1, delta_y_1, delta_z_1 = (0, y_displacement, -0.1)
+                delta_x_2, delta_y_2, delta_z_2 = (0, y_displacement, -0.1)
+            else:
+                all_done = True
 
-            max_delta_x1_x2 = h * 3/4
-            delta_x_1 = np.random.uniform(low = -max_x, high = max_x)
-            lower_bound_x = max(-max_x, delta_x_1 - max_delta_x1_x2)
-            upper_bound_x = min(max_x, delta_x_1 + max_delta_x1_x2)
-            delta_x_2 = -np.random.uniform(low = lower_bound_x, high = upper_bound_x)
-            
-            max_delta_z1_z2 = h * 2/3
-            delta_z_1 = np.random.uniform(low = 0.0, high = max_z)  
-            lower_bound_z = max(-0.0, delta_z_1 - max_delta_z1_z2)
-            upper_bound_z = min(max_z, delta_z_1 + max_delta_z1_z2)
-            delta_z_2 = np.random.uniform(low = lower_bound_z, high = upper_bound_z)
-
-            max_delta_y1_y2, min_delta_y1_y2 = h * 3/4, 0
-            delta_y_1 = np.random.uniform(low = -max_y, high = max_delta_y1_y2 + max_y)
-            lower_bound_y = min_delta_y1_y2 - delta_y_1
-            upper_bound_y = max_delta_y1_y2 - delta_y_1
-            delta_y_2 = np.random.uniform(low = lower_bound_y, high = upper_bound_y)
-
-
-            # delta_y_1 = -max_y#np.random.uniform(low = -max_y/2, high = max_y)
-            # delta_y_2 = h * 3/4 - delta_y_1
-            # delta_y_1 = h * 3/4 + max_y
-            # delta_y_2 = -max_y
-
-            # print(max_delta_x1_x2)
-            # print("delta_x_1, delta_z_1:", delta_x_1, delta_z_1)
-            # print("lower_bound_x, upper_bound_x:", lower_bound_x, upper_bound_x)
-            # print("lower_bound_z, upper_bound_z:", lower_bound_z, upper_bound_z)
-                  
-            delta_alpha_1 = np.random.uniform(low = -np.pi/8, high = np.pi/8)
-            delta_beta_1 = np.random.uniform(low = -np.pi/8, high = np.pi/8) 
-            delta_gamma_1 = np.random.uniform(low = -np.pi/8, high = np.pi/8)
-
-            delta_alpha_2 = np.random.uniform(low = -np.pi/8, high = np.pi/8)
-            delta_beta_2 = np.random.uniform(low = -np.pi/8, high = np.pi/8) 
-            delta_gamma_2 = np.random.uniform(low = -np.pi/8, high = np.pi/8)
+            action_count += 1
+                             
+            delta_alpha_1, delta_beta_1, delta_gamma_1 = 1e-6, 1e-6, 1e-6
+            delta_alpha_2, delta_beta_2, delta_gamma_2 = 1e-6, 1e-6, 1e-6
 
             print(f"Robot 1 xyz: {delta_x_1:.2f}, {delta_y_1:.2f}, {delta_z_1:.2f}")
             print(f"Robot 2 xyz: {delta_x_2:.2f}, {delta_y_2:.2f}, {delta_z_2:.2f}")
-
 
 
             x_1 = delta_x_1 + init_pose_1[0,3]
@@ -587,163 +623,76 @@ if __name__ == "__main__":
 
 
         if state == "move to goal":
-            main_ins_pos_1 = gym.get_joint_position(envs[0], gym.get_joint_handle(envs[0], "kuka", "psm_main_insertion_joint"))
-            main_ins_pos_2 = gym.get_joint_position(envs[0], gym.get_joint_handle(envs[0], "kuka2", "psm_main_insertion_joint"))
-            if main_ins_pos_1 <= 0.042 or main_ins_pos_2 <= 0.042:
-                rospy.logerr("Exceed joint constraint")
-                group_count += 1
-                state = "reset"
-
-            rigid_contacts = gym.get_env_rigid_contacts(envs[0])
-            if len(list(rigid_contacts)) != 0:
-                for k in range(len(list(rigid_contacts))):
-                    if rigid_contacts[k]['body0'] > -1 and rigid_contacts[k]['body1'] > -1 : # ignore collision with the ground which has a value of -1
-                        state = "reset"
-                        rospy.logerr("Two robots collided !!")
-                        break
-
 
             contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
             if (not(20 in contacts or 21 in contacts) or not(9 in contacts or 10 in contacts)):  # lose contact w either robot 2 or robot 1    
                 rospy.logerr("Lost contact with robot")
-                # all_done = True
-                
-                group_count += 1
-                state = "reset"
+                all_done = True
 
-            else:
-                if frame_count % 15 == 0:
-                    full_pc_on_trajectory.append(get_object_particle_state(gym, sim) + shift)
-                    pc_on_trajectory.append(get_partial_pointcloud_vectorized(*camera_args) + shift)
-                    curr_trans_on_trajectory_1.append(get_pykdl_client(robot_1.get_arm_joint_positions())[1])
-                    curr_trans_on_trajectory_2.append(get_pykdl_client(robot_2.get_arm_joint_positions())[1])
-                              
-                    if frame_count == 0:
-                        mp_mani_point_1 = deepcopy(gym.get_actor_rigid_body_states(robot_1.env_handle, robot_1.robot_handle, gymapi.STATE_POS)[-3])
-                        mp_mani_point_2 = deepcopy(gym.get_actor_rigid_body_states(robot_2.env_handle, robot_2.robot_handle, gymapi.STATE_POS)[-3])
+            if True:
 
-                    terminate_count += 1
-                    if terminate_count >= 10:
-                        print("+++ Taking too long")
-                        state = "reset"
-                        terminate_count = 0
                 frame_count += 1           
                 
                 action_1 = tvc_behavior_1.get_action()  
                 action_2 = tvc_behavior_2.get_action() 
                 # print("action_1, action_2:", action_1, action_2)
                 if (action_1 is not None) and (action_2 is not None) and gym.get_sim_time(sim) - closed_loop_start_time <= 1.5: 
-                    gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position())
-                    gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position())
+                    gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position() * 4)
+                    gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position() * 4)
 
                 else:   
+
+                    # enclosed = check_points_enclosed_by_square(get_object_particle_state(gym, sim))                                                             
+                    # print("enclosed?:", enclosed)
+                    # # visualize_enclosure(get_object_particle_state(gym, sim))
+                    
                     if visualization:
-                        output_file = f"/home/baothach/Downloads/test_cam_views_{data_point_count}.png"           
-                        visualize_camera_views(gym, sim, envs_obj[0], cam_handles, \
-                                            resolution=[cam_props.height, cam_props.width], output_file=output_file)   
+                        if action_count == 3:
+                            pcd_ize(get_partial_pointcloud_vectorized(*camera_args), vis=True)                                        
+                            visualize_camera_views(gym, sim, envs_obj[0], cam_handles, \
+                                                resolution=[cam_props.height, cam_props.width], output_file=output_file)   
                         
                     rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
                     
                     # if sample_count == 0:
                     
-                    pc_goal = get_partial_pointcloud_vectorized(*camera_args) + shift 
-                    full_pc_goal = get_object_particle_state(gym, sim) + shift
-                    _, final_trans_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
-                    _, final_trans_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
-                    # print("***Final x, y, z: ", final_pose["pose"]["p"]["x"], final_pose["pose"]["p"]["y"], final_pose["pose"]["p"]["z"] ) 
+                    pc_deformable = get_partial_pointcloud_vectorized(*camera_args) + shift 
+                    full_pc_deformable = get_object_particle_state(gym, sim) + shift
+                    all_recorded_pcs.append(pc_deformable)
+                    all_recorded_full_pcs.append(full_pc_deformable)
                     
-                    # for j, (curr_trans_1, curr_trans_2) in enumerate(zip(curr_trans_on_trajectory_1, curr_trans_on_trajectory_2)):    
-                    #     # print(j)                    
-                    #     p_1, R_1, twist_1 = tvc_behavior_1.get_transform(curr_trans_1, final_trans_1, get_twist=True)
-                    #     mani_point_1 = curr_trans_1
-
-                    #     p_2, R_2, twist_2 = tvc_behavior_2.get_transform(curr_trans_2, final_trans_2, get_twist=True)
-                    #     mani_point_2 = curr_trans_2
-
-                    #     partial_pcs = (pc_on_trajectory[j], pc_goal)
-                    #     full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
-
-                    #     mani_point = np.array([mani_point_1[0,3], mani_point_1[1,3]- two_robot_offset, mani_point_1[2,3] + ROBOT_Z_OFFSET,
-                    #                            -mani_point_2[0,3], -mani_point_2[1,3], mani_point_2[2,3] + ROBOT_Z_OFFSET]) \
-                    #                 + np.concatenate((shift, shift))
-
-                    #     data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
-                    #             "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
-                    #             "mani_point": mani_point, "obj_name": args.obj_name}
-
-                    #     # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
-                    #     #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
-                    #     print("New data_point_count:", data_point_count)
-                    #     data_point_count += 1       
-
-
-                    if sample_count == 0:
-                        for j in range(1,len(pc_on_trajectory)):    
-                            partial_pcs = (pc_init, pc_on_trajectory[j])
-                            full_pcs = (full_pc_init, full_pc_on_trajectory[j])
-
-                            mani_point = np.array(list(mp_mani_point_1["pose"][0]) + list(mp_mani_point_2["pose"][0])) + np.concatenate((shift, shift))
-                            data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
-                                    "mani_point": mani_point, "obj_name": args.obj_name}
-                            with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
-                                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
-                            
-
-                            print("New mp_data_point_count:", mp_data_point_count)
-                            mp_data_point_count += 1      
+                    if len(all_recorded_pcs) == 3:
+                        assert len(all_recorded_pcs) == len(all_recorded_full_pcs)
+                        pc_rigid = get_partial_pointcloud_vectorized(*rigid_camera_args) + shift 
+                        
+                        if visualization:
+                            rigid_pcd = pcd_ize(pc_rigid)
+                            deformable_pcds = []
+                            for i in range(len(all_recorded_pcs)):
+                                deformable_pcds.append(pcd_ize(all_recorded_pcs[i]))
+                            open3d.visualization.draw_geometries(deformable_pcds + [rigid_pcd])
+                                
+                        
+                        data = {"all_recorded_pcs": all_recorded_pcs, "all_recorded_full_pcs": all_recorded_full_pcs,
+                                "pc_rigid": pc_rigid, "obj_name": args.obj_name,
+                                "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
+                        write_pickle_data(data, f"{data_recording_path}/sample {data_point_count}.pickle")       
+                        print_color(f"\n*** Total data point count: {len(os.listdir(data_recording_path))}\n")
+                        data_point_count += 1     
+                        all_done = True  
 
                     frame_count = 0
-                    terminate_count = 0
-                    sample_count += 1
-                    print("group ", group_count, ", sample ", sample_count)
-                    pc_on_trajectory = []
-                    full_pc_on_trajectory = []
-                    curr_trans_on_trajectory_1 = []  
-                    curr_trans_on_trajectory_2 = []
                     state = "get shape servo plan"
+                    _,init_pose_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
+                    init_eulers_1 = transformations.euler_from_matrix(init_pose_1)
+
+                    _,init_pose_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
+                    init_eulers_2 = transformations.euler_from_matrix(init_pose_2)
              
         if state == "reset":   
-            rospy.loginfo("**Current state: " + state)
-            frame_count = 0
-            sample_count = 0
-            terminate_count = 0
+            all_done = True
 
-            dof_props_2['driveMode'][:8].fill(gymapi.DOF_MODE_POS)
-            dof_props_2["stiffness"][:8].fill(200.0)
-            dof_props_2["damping"][:8].fill(40.0)            
-            
-            gym.set_actor_rigid_body_states(envs[i], kuka_handles[i], init_robot_state_1, gymapi.STATE_ALL) 
-            gym.set_actor_rigid_body_states(envs[i], kuka_handles_2[i], init_robot_state_2, gymapi.STATE_ALL) 
-
-            gym.set_particle_state_tensor(sim, gymtorch.unwrap_tensor(saved_object_state))
-            gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, [0]*8)
-            gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, [0]*8)
-
-            
-            print("Sucessfully reset robot and object")
-            pc_on_trajectory = []
-            full_pc_on_trajectory = []
-            curr_trans_on_trajectory_1 = []
-            curr_trans_on_trajectory_2 = []
-                
-            gym.set_actor_dof_properties(robot_1.env_handle, robot_1.robot_handle, dof_props_2) 
-            gym.set_actor_dof_properties(robot_2.env_handle, robot_2.robot_handle, dof_props_2)  
-            gym.set_actor_dof_position_targets(robot_1.env_handle, robot_1.robot_handle, [0,0,0,0,0.24,0,0,0,1.5,0.8]) 
-            gym.set_actor_dof_position_targets(robot_2.env_handle, robot_2.robot_handle, [0,0,0,0,0.24,0,0,0,1.5,0.8]) 
-
-            state = "home"
- 
-        
-        if sample_count == max_sample_count:  
-            sample_count = 0            
-            group_count += 1
-            print("group count: ", group_count)
-            state = "reset" 
-
-
-
-        # if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:  
-        if  mp_data_point_count >= max_mp_data_point_count or mp_data_point_count >= max_mp_data_point_per_variation:
+        if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:  
             print_color(f"Done collecting data for {args.obj_name}")                  
             all_done = True 
 

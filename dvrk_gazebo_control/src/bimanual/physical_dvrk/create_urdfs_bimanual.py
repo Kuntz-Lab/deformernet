@@ -2,10 +2,10 @@ import os
 import pickle
 
 
-urdf_path = "/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/multi_box_5kPa_eval"
+urdf_path = "/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_box_5kPa"
 os.makedirs(urdf_path,exist_ok=True)
 
-mesh_path = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_5kPa_eval"
+mesh_path = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_5kPa"
 mesh_relative_path = "/".join(mesh_path.split("/")[-3:])
 
 shape_name = "box"
@@ -42,7 +42,7 @@ for i in range(100):
                 <poissons value="{poissons}"/>
                 <damping value="0.0" /> 
                 <attachDistance value="{attach_dist}"/>
-                <tetmesh filename="../../../{mesh_relative_path}/{object_name+".tet"}"/>
+                <tetmesh filename="../../../../{mesh_relative_path}/{object_name+".tet"}"/>
                 <scale value="{scale}"/>
             </fem>
         </link>

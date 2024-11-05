@@ -11,16 +11,17 @@ headless = True
 start_time = timeit.default_timer()
 
 # prim_names = ["box", "cylinder", "hemis"] #["box", "cylinder", "hemis"]
-stiffnesses = ["5k", "10k"]  #["1k", "5k", "10k"] 
+stiffnesses = ["1k", "5k", "10k"]  #["1k", "5k", "10k"] 
 
 prim_name = "box"
 for stiffness in stiffnesses:
-    for _ in range(0, 500):  # 100000
+    for _ in range(0, 300):  # 500
         i = np.random.randint(0,100)
         os.system(f"rosrun dvrk_gazebo_control collect_data_bimanual_physical_dvrk.py --flex --headless {str(headless)} "
                 f"--prim_name {prim_name} --stiffness {stiffness} --obj_name {i}")
     
-
+        # os.system(f"rosrun dvrk_gazebo_control collect_data_single_physical_dvrk.py --flex --headless {str(headless)} "
+        #         f"--prim_name {prim_name} --stiffness {stiffness} --obj_name {i}")
 
 
 

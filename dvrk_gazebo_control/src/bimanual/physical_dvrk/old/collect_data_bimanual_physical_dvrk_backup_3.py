@@ -160,7 +160,7 @@ if __name__ == "__main__":
     print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
-    asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa"
+    asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/multi_{object_category}Pa"
     soft_asset_file = args.obj_name + ".urdf"    
 
 
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     # cam_positions.append(gymapi.Vec3(-0.3, soft_pose.p.y, 0.25))   # put camera on the side of object
     # cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
 
-    cam_positions.append(gymapi.Vec3(-0.0, soft_pose.p.y + 0.001, 0.5))   # put camera on top of object
+    cam_positions.append(gymapi.Vec3(-0.0, soft_pose.p.y + 0.001, 0.5))   # put camera on the side of object
     cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
 
     for i, env_obj in enumerate(envs_obj):
@@ -320,14 +320,15 @@ if __name__ == "__main__":
     data_point_count = len(os.listdir(data_recording_path))
     mp_data_point_count = len(os.listdir(mp_data_recording_path))
     max_group_count = 150000
-    max_sample_count = 3    #2
-    
-    
-    # max_data_point_count = 5000
-    # max_data_point_per_variation = data_point_count + 50  
+    max_sample_count = 1    #2
+    max_data_point_count = 210000     #15000
+    # if args.obj_name == 'box_64':
+    #     max_data_point_per_variation = 9600
+    # else:
 
-    max_mp_data_point_count = 2000
-    max_mp_data_point_per_variation = mp_data_point_count + 20  
+    max_data_point_per_variation = data_point_count + 150
+    # print_color("original data_point_count: " + str(data_point_count), "green")
+
 
     pc_on_trajectory = []
     full_pc_on_trajectory = []
@@ -344,7 +345,7 @@ if __name__ == "__main__":
     segmentationId_dict = {"robot_1": 10, "robot_2": 11, "cylinder": 12}
     camera_args = [gym, sim, envs_obj[0], cam_handles[0], cam_props, 
                     segmentationId_dict, "deformable", None, 0.002, False, "cpu"]    
-    visualization = False
+    visualization = True#False
 
 
     
@@ -507,7 +508,8 @@ if __name__ == "__main__":
             rospy.loginfo("**Current state: " + state) 
             
             if args.prim_name in ["box", "cylinder"]:
-                max_x, max_y, max_z = 0.2, 0.15, 0.2
+                max_x = max_z = 0.2
+                max_y = 0.15 #h * 1/2
 
                 # print("computed max:", max_x, max_y, max_z)
             # elif args.prim_name == "hemis":    
@@ -523,21 +525,22 @@ if __name__ == "__main__":
             #     raise Exception("Wrong object category")
 
             max_delta_x1_x2 = h * 3/4
+            
+            
+
             delta_x_1 = np.random.uniform(low = -max_x, high = max_x)
             lower_bound_x = max(-max_x, delta_x_1 - max_delta_x1_x2)
             upper_bound_x = min(max_x, delta_x_1 + max_delta_x1_x2)
             delta_x_2 = -np.random.uniform(low = lower_bound_x, high = upper_bound_x)
             
-            max_delta_z1_z2 = h * 2/3
             delta_z_1 = np.random.uniform(low = 0.0, high = max_z)  
-            lower_bound_z = max(-0.0, delta_z_1 - max_delta_z1_z2)
-            upper_bound_z = min(max_z, delta_z_1 + max_delta_z1_z2)
+            lower_bound_z = max(-0.0, delta_z_1 - max_delta_x1_x2)
+            upper_bound_z = min(max_z, delta_z_1 + max_delta_x1_x2)
             delta_z_2 = np.random.uniform(low = lower_bound_z, high = upper_bound_z)
 
-            max_delta_y1_y2, min_delta_y1_y2 = h * 3/4, 0
-            delta_y_1 = np.random.uniform(low = -max_y, high = max_delta_y1_y2 + max_y)
-            lower_bound_y = min_delta_y1_y2 - delta_y_1
-            upper_bound_y = max_delta_y1_y2 - delta_y_1
+            delta_y_1 = np.random.uniform(low = -max_y, high = h * 2/3 + max_y)
+            lower_bound_y = -delta_y_1
+            upper_bound_y = h * 2/3 - delta_y_1
             delta_y_2 = np.random.uniform(low = lower_bound_y, high = upper_bound_y)
 
 
@@ -612,7 +615,7 @@ if __name__ == "__main__":
                 state = "reset"
 
             else:
-                if frame_count % 15 == 0:
+                if frame_count % 150 == 0:
                     full_pc_on_trajectory.append(get_object_particle_state(gym, sim) + shift)
                     pc_on_trajectory.append(get_partial_pointcloud_vectorized(*camera_args) + shift)
                     curr_trans_on_trajectory_1.append(get_pykdl_client(robot_1.get_arm_joint_positions())[1])
@@ -652,29 +655,29 @@ if __name__ == "__main__":
                     _, final_trans_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
                     # print("***Final x, y, z: ", final_pose["pose"]["p"]["x"], final_pose["pose"]["p"]["y"], final_pose["pose"]["p"]["z"] ) 
                     
-                    # for j, (curr_trans_1, curr_trans_2) in enumerate(zip(curr_trans_on_trajectory_1, curr_trans_on_trajectory_2)):    
-                    #     # print(j)                    
-                    #     p_1, R_1, twist_1 = tvc_behavior_1.get_transform(curr_trans_1, final_trans_1, get_twist=True)
-                    #     mani_point_1 = curr_trans_1
+                    for j, (curr_trans_1, curr_trans_2) in enumerate(zip(curr_trans_on_trajectory_1, curr_trans_on_trajectory_2)):    
+                        # print(j)                    
+                        p_1, R_1, twist_1 = tvc_behavior_1.get_transform(curr_trans_1, final_trans_1, get_twist=True)
+                        mani_point_1 = curr_trans_1
 
-                    #     p_2, R_2, twist_2 = tvc_behavior_2.get_transform(curr_trans_2, final_trans_2, get_twist=True)
-                    #     mani_point_2 = curr_trans_2
+                        p_2, R_2, twist_2 = tvc_behavior_2.get_transform(curr_trans_2, final_trans_2, get_twist=True)
+                        mani_point_2 = curr_trans_2
 
-                    #     partial_pcs = (pc_on_trajectory[j], pc_goal)
-                    #     full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
+                        partial_pcs = (pc_on_trajectory[j], pc_goal)
+                        full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
 
-                    #     mani_point = np.array([mani_point_1[0,3], mani_point_1[1,3]- two_robot_offset, mani_point_1[2,3] + ROBOT_Z_OFFSET,
-                    #                            -mani_point_2[0,3], -mani_point_2[1,3], mani_point_2[2,3] + ROBOT_Z_OFFSET]) \
-                    #                 + np.concatenate((shift, shift))
+                        mani_point = np.array([mani_point_1[0,3], mani_point_1[1,3]- two_robot_offset, mani_point_1[2,3] + ROBOT_Z_OFFSET,
+                                               -mani_point_2[0,3], -mani_point_2[1,3], mani_point_2[2,3] + ROBOT_Z_OFFSET]) \
+                                    + np.concatenate((shift, shift))
 
-                    #     data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
-                    #             "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
-                    #             "mani_point": mani_point, "obj_name": args.obj_name}
+                        data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
+                                "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
+                                "mani_point": mani_point, "obj_name": args.obj_name}
 
-                    #     # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
-                    #     #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
-                    #     print("New data_point_count:", data_point_count)
-                    #     data_point_count += 1       
+                        # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
+                        #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
+                        print("New data_point_count:", data_point_count)
+                        data_point_count += 1       
 
 
                     if sample_count == 0:
@@ -685,8 +688,8 @@ if __name__ == "__main__":
                             mani_point = np.array(list(mp_mani_point_1["pose"][0]) + list(mp_mani_point_2["pose"][0])) + np.concatenate((shift, shift))
                             data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
                                     "mani_point": mani_point, "obj_name": args.obj_name}
-                            with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
-                                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
+                            # with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
+                            #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
                             
 
                             print("New mp_data_point_count:", mp_data_point_count)
@@ -742,8 +745,8 @@ if __name__ == "__main__":
 
 
 
-        # if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:  
-        if  mp_data_point_count >= max_mp_data_point_count or mp_data_point_count >= max_mp_data_point_per_variation:
+        # if group_count == max_group_count or data_point_count >= max_data_point_count: 
+        if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:  
             print_color(f"Done collecting data for {args.obj_name}")                  
             all_done = True 
 

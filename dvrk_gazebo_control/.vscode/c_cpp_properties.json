@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/baothach/dvrk_shape_servo/devel/include/**",
+        "/opt/ros/melodic/include/**",
+        "/home/baothach/dvrk_shape_servo/src/dvrk_env/dvrk_gazebo/include/**",
+        "/home/baothach/dvrk_shape_servo/src/dvrk_env/dvrk_gazebo_control/include/**",
+        "/home/baothach/dvrk_shape_servo/src/ll4ma_moveit/moveit_interface/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

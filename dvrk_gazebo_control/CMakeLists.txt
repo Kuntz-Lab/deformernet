@@ -65,7 +65,6 @@ add_service_files(
   StraightLinePlan.srv
   SimGraspData.srv
   ManageMoveitScene.srv
-  VFH.srv
   PyKDL.srv
 )
 
@@ -148,8 +147,6 @@ include_directories(
 ## Declare a C++ executable
 add_executable(dvrk_gazebo_control_node src/dvrk_gazebo_control.cpp)
 add_executable(bao_control_node src/bao_control.cpp)
-add_executable(VFH_node src/shape_servo/VFH_server.cpp)
-add_executable(VFH_test src/shape_servo/VFH_test.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -161,14 +158,6 @@ target_link_libraries(dvrk_gazebo_control_node
 )
 target_link_libraries(bao_control_node
    ${catkin_LIBRARIES}
-)
-target_link_libraries(VFH_node 
-   ${catkin_LIBRARIES}
-   ${PCL_LIBRARIES}
-)
-target_link_libraries(VFH_test 
-   ${catkin_LIBRARIES}
-   ${PCL_LIBRARIES}
 )
 #############
 ## Install ##

@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"name": "dvrk_gazebo_control",
+			"path": "."
+		}
+	],
+	"settings": {
+		"python.autoComplete.extraPaths": [
+			"/home/baothach/dvrk_shape_servo/devel/lib/python2.7/dist-packages",
+			"/opt/ros/melodic/lib/python2.7/dist-packages"
+		],
+		"python.analysis.extraPaths": [
+			"/home/baothach/dvrk_shape_servo/devel/lib/python2.7/dist-packages",
+			"/opt/ros/melodic/lib/python2.7/dist-packages"
+		]
+	}
+}

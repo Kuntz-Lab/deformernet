@@ -37,15 +37,20 @@ def create_cylinder_mesh_datatset(save_mesh_dir, num_mesh=100, save_pickle=True,
         pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL) 
 
 def create_box_mesh_datatset(save_mesh_dir, type, num_mesh=100, save_pickle=True, seed=0):
-    np.random.seed(seed)
+    np.random.seed(seed) 
     primitive_dict = {'count':0}
     for i in range(num_mesh):
         print(f"object {i}")
 
         thickness = np.random.uniform(low = 0.02, high = 0.03)
-        # sample = np.random.uniform(low = 0.075, high = 0.25, size=2)
-        sample = np.random.uniform(low = 0.075, high = 0.20, size=2)
-        height, width = max(sample), min(sample)
+        # # sample = np.random.uniform(low = 0.075, high = 0.25, size=2)
+        # sample = np.random.uniform(low = 0.075, high = 0.20, size=2)
+        # height, width = max(sample), min(sample)
+
+        min_dim, max_dim = 0.075, 0.20
+        min_ratio = 1.5 
+        width = np.random.uniform(low = min_dim, high = max_dim/min_ratio)
+        height = np.random.uniform(low = width * min_ratio, high = max_dim)
         
 
         mesh = trimesh.creation.box((height, width, thickness))
@@ -119,9 +124,9 @@ def create_hemis_mesh_datatset(save_mesh_dir, num_mesh=100, save_pickle=True, se
 
 ## 1000-200, 5000-1000, 10000-1000
 
-mesh_dir = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_5kPa_eval"
+mesh_dir = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_1kPa"
 os.makedirs(mesh_dir, exist_ok=True)
-create_box_mesh_datatset(mesh_dir, type='5k', num_mesh=100, seed=2024) # seed=0
+create_box_mesh_datatset(mesh_dir, type='1k', num_mesh=100, seed=None) # seed=0
 
 # mesh_dir = "/home/baothach/sim_data/Custom/Custom_mesh/multi_cylinders_1000Pa"
 # create_cylinder_mesh_datatset(mesh_dir)
