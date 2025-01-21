@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import print_function, division, absolute_import
-
-
 import sys
 import roslib.packages as rp
 pkg_path = rp.get_pkg_dir('dvrk_gazebo_control')
@@ -24,7 +21,7 @@ from utils.isaac_utils import isaac_format_pose_to_PoseStamped as to_PoseStamped
 from utils.isaac_utils import fix_object_frame, get_pykdl_client
 from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
-from utils.point_cloud_utils import pcd_ize
+from utils.point_cloud_utils import pcd_ize, down_sampling
 import pickle5 as pickle
 import timeit
 from copy import deepcopy
@@ -33,6 +30,7 @@ from scipy import interpolate
 from core import Robot
 from behaviors import MoveToPose, TaskVelocityControl2
 import transformations
+from sklearn.neighbors import NearestNeighbors
 
 
 ROBOT_Z_OFFSET = 0.25
@@ -73,6 +71,7 @@ if __name__ == "__main__":
             {"name": "--prim_name", "type": str, "default": "box", "help": "Select primitive shape. Options: box, cylinder, hemis"},
             {"name": "--stiffness", "type": str, "default": "5k", "help": "Select object stiffness. Options: 1k, 5k, 10k"},
             {"name": "--obj_name", "type": int, "default": 0, "help": "select variations of a primitive shape"},
+            {"name": "--goal_model", "type": str, "default": "diffdef", "help": "Select goal model. Options: diffdef, defgoalnet"},
             {"name": "--headless", "type": str, "default": "False", "help": "headless mode"}])
 
     num_envs = args.num_envs
@@ -341,24 +340,10 @@ if __name__ == "__main__":
     all_done = False
     state = "home"
     
-    
-    data_recording_path = f"/home/baothach/shape_servo_data/diffusion_defgoalnet/object_packaging_multimodal/multi_{object_category}Pa/data"
-
- 
-    os.makedirs(data_recording_path, exist_ok=True)
-
     terminate_count = 0
     sample_count = 0
     frame_count = 0
     group_count = 0
-    data_point_count = len(os.listdir(data_recording_path))
-    max_group_count = 150000
-    max_sample_count = 3    #2
-    
-    
-    max_data_point_count = 100000
-    max_data_point_per_variation = data_point_count + 1  
-
 
 
     pc_on_trajectory = []
@@ -371,16 +356,13 @@ if __name__ == "__main__":
     total_computation_time = 0
     data = []
     action_count = 0
-    all_recorded_pcs = []
-    all_recorded_full_pcs = []
-    global_all_recorded_pcs = []
-    global_all_recorded_full_pcs = []
     goal_count = 0
     max_goal_count = 5
     action_length = 4
     reset_count = 0
     max_reset_count = 10
-    assert data_point_count % max_goal_count == 0, "data_point_count % max_goal_count must be 0"
+    max_action_count = 10
+    enclosed_percent = 0.0
     
 
     dc_client = GraspDataCollectionClient()
@@ -390,10 +372,49 @@ if __name__ == "__main__":
     rigid_camera_args = [gym, sim, envs_obj[0], cam_handles[0], cam_props, 
                         segmentationId_dict, "rigid", None, 0.002, False, "cpu"] 
     visualization = False
-    output_file = f"/home/baothach/Downloads/test_cam_views_{data_point_count}.png" 
-
-
+    output_file = f"/home/baothach/Downloads/test_cam_views.png" 
     
+    sys.path.append("/home/baothach/diffusion-point-cloud")
+    sys.path.append("/home/baothach/diffusion-point-cloud/utils")
+    sys.path.append("/home/baothach/diffusion-point-cloud/models")
+    from models.vae_flow_3 import BaoFlowVAE
+    from models.defgoalnet import DefGoalNet
+    import torch    
+    
+    # DiffDef Model
+    # goal_model = "diffdef"  # "diffdef" or "defgoalnet"
+    goal_model = args.goal_model
+    print_color(f"\n***** USING {goal_model} *****\n", "green")
+    args.device = "cuda"
+    
+    if goal_model == "diffdef":
+        ckpt = torch.load("/home/baothach/diffusion-point-cloud/weights/object_packaging/weights_10.30.2024-05:16/ckpt_0.000000_145000.pt")
+        model = BaoFlowVAE(ckpt['args']).to(args.device)
+        model.load_state_dict(ckpt['state_dict'])
+        model.eval()
+    elif goal_model == "defgoalnet":
+        model = DefGoalNet(num_points = 512, embedding_size=256).to(args.device)
+        model.load_state_dict(torch.load("/home/baothach/shape_servo_data/diffusion_defgoalnet/object_packaging_multimodal/weights/defgoalnet/run1/epoch 1000"))
+        model.eval()    
+    else:
+        raise ValueError("Invalid goal model name")    
+
+    ### Set up DeformerNet
+    deformernet_model_main_path = "/home/baothach/shape_servo_DNN"
+    sys.path.append(f"{deformernet_model_main_path}/bimanual")
+
+    from bimanual_architecture import DeformerNetBimanualRot
+    deformernet = DeformerNetBimanualRot(use_mp_input=False).to(args.device)
+        
+    weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/all_objects/weights/run2_w_rot_no_MP"     
+    deformernet.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {200}")))
+    deformernet.eval()
+ 
+    results_path = f"/home/baothach/shape_servo_data/diffusion_defgoalnet/object_packaging_multimodal/evaluation/{object_category}/{goal_model}" 
+    os.makedirs(results_path, exist_ok=True)
+    data_point_count = len(os.listdir(results_path))
+    max_data_point_count = 100
+            
     start_time = timeit.default_timer()    
 
     close_viewer = False
@@ -401,9 +422,23 @@ if __name__ == "__main__":
     robot_2 = Robot(gym, sim, envs[0], kuka_handles_2[0])
     robot_1 = Robot(gym, sim, envs[0], kuka_handles[0])
 
-    def set_dof_properties():
-        gym.set_actor_dof_properties(robot_1.env_handle, robot_1.robot_handle, dof_props_2)
-        gym.set_actor_dof_properties(robot_2.env_handle, robot_2.robot_handle, dof_props_2)
+    def check_points_enclosed_percentage(point_cloud, square_size=0.1 * amazon_box_scale):
+        square_center = [rigid_pose.p.x, rigid_pose.p.y, 0]
+        transformed_points = point_cloud[:, :3] - square_center
+        
+        # Define bounds for enclosed region
+        half_size = square_size / 2
+        x_min, x_max = -half_size, half_size
+        y_min, y_max = -half_size, half_size
+        
+        # Check if points are within bounds
+        enclosed_points = (transformed_points[:, 0] >= x_min) & (transformed_points[:, 0] <= x_max) & \
+                        (transformed_points[:, 1] >= y_min) & (transformed_points[:, 1] <= y_max)
+        
+        # Calculate the percentage of points within the bounds
+        enclosed_percentage = np.sum(enclosed_points) / len(point_cloud) * 100
+        return enclosed_percentage
+        
 
     while (not close_viewer) and (not all_done): 
 
@@ -556,9 +591,10 @@ if __name__ == "__main__":
 
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state) 
-
+            print("\n==============================\n")
+            print("action_count:", action_count)
             if action_count == 0:
-                obj_angle = np.random.uniform(-np.pi/2, np.pi/2)
+                obj_angle = 0    #np.random.uniform(-np.pi/2, np.pi/2)
             print_color(f"Object angle: {obj_angle}", "green")
             
             # side_angle = 0*-np.pi/2
@@ -567,9 +603,7 @@ if __name__ == "__main__":
                 # delta_x_2, delta_y_2, delta_z_2 = (0, 0.00, 0.15)
                 delta_x_1, delta_y_1, delta_z_1 = (0, 0.00, 0.17)
                 delta_x_2, delta_y_2, delta_z_2 = (0, 0.00, 0.17)
-            elif action_count == 1:
-                dof_props_2["damping"][:8].fill(200.0)
-                set_dof_properties()                
+            elif action_count == 1:             
                 y_displacement = rigid_pose.p.y + two_robot_offset/2
                 delta_x_1, delta_y_1, delta_z_1 = (rigid_pose.p.x, y_displacement, 0)
                 delta_x_2, delta_y_2, delta_z_2 = (-rigid_pose.p.x, -y_displacement, 0)                
@@ -577,31 +611,98 @@ if __name__ == "__main__":
             elif action_count == 2:    
                 eef1_to_eef2_y = abs(robot_1.get_ee_cartesian_position()[1] - robot_2.get_ee_cartesian_position()[1])
                 
-                delta_x_1 = eef1_to_eef2_y/2 * np.sin(obj_angle)
-                delta_y_1 = (eef1_to_eef2_y/2 - eef1_to_eef2_y/2 * np.cos(obj_angle))
+                delta_x_1 = 0   #eef1_to_eef2_y/2 * np.sin(obj_angle)
+                delta_y_1 = 0   #(eef1_to_eef2_y/2 - eef1_to_eef2_y/2 * np.cos(obj_angle))
                 delta_z_1 = 0
-                delta_x_2 = eef1_to_eef2_y/2 * np.sin(obj_angle)
-                delta_y_2 = (eef1_to_eef2_y/2 - eef1_to_eef2_y/2 * np.cos(obj_angle))
-                delta_z_2 = 0
+                delta_x_2 = 0   #eef1_to_eef2_y/2 * np.sin(obj_angle)
+                delta_y_2 = 0   #(eef1_to_eef2_y/2 - eef1_to_eef2_y/2 * np.cos(obj_angle))
+                delta_z_2 = 0   
+
+            elif action_count >= 3: 
+                current_pc = get_object_particle_state(gym, sim)
+                enclosed_percent = check_points_enclosed_percentage(current_pc)
+                print_color(f"Enclosed percentage: {enclosed_percent:.2f}", "red")
+                # visualize_enclosure(current_pc)
+                
+                with torch.no_grad():   
+                    if action_count == 3:         
+                        num_pts = 512  
+                        init_pc = down_sampling(get_partial_pointcloud_vectorized(*camera_args) + shift, num_pts)
+                        context_pc = down_sampling(pc_rigid, num_pts)
+                        
+                        if goal_model == "diffdef":
+                            diffdef_shift = context_pc.mean(axis=0)
+                            scale = (context_pc - diffdef_shift).flatten().std()                 
+                            init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3)
+                            context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3) 
+                            
+                            sample_num_points = 1024
+                            z = torch.randn([1, ckpt['args'].latent_dim]).to(args.device)
+                            x = model.sample(z, context_pc_tensor, init_pc_tensor, sample_num_points, flexibility=ckpt['args'].flexibility)
+                            goal_pc_numpy = x[0].detach().cpu().numpy()*scale + diffdef_shift    
+                        elif goal_model == "defgoalnet":
+                            diffdef_shift = init_pc.mean(axis=0)
+                            scale = (init_pc - diffdef_shift).flatten().std()                 
+                            init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
+                            context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
+                            goal_pc_numpy = model(init_pc_tensor, context_pc_tensor).permute(0,2,1).squeeze().detach().cpu().numpy()*scale + diffdef_shift                                        
+                        # pcd_predicted = pcd_ize(goal_pc_numpy, color=[1,0,0])   # *scale + diffdef_shift
+                        # pcd_init = pcd_ize(init_pc, color=[0,1,0])
+                        # pcd_context = pcd_ize(context_pc, color=[0,0,0])    
+                        # open3d.visualization.draw_geometries([pcd_init, pcd_context, pcd_predicted])       
+
+                        goal_centroid = goal_pc_numpy.mean(axis=0)
+                        goal_pc_numpy -= goal_centroid
+                        min_z_goal = goal_pc_numpy[:,2].min()
+                        goal_pc_numpy[:,2] -= min_z_goal
+                        goal_pc_tensor = torch.from_numpy(goal_pc_numpy).unsqueeze(0).float().permute(0,2,1).to(args.device)  # shape (1, 3, num_pts)
+
                 
 
-            elif action_count == 3:               
-                box_size = 0.1 * amazon_box_scale
-                if h > box_size:
-                    y_displacement = min((h - box_size) * 0.5 + 0.03, h * 0.5 - 0.01)   
-                    print("box size, h, y_displacement:", box_size, h, y_displacement)            
-   
-                else:
-                    y_displacement = 0.03   # 0.03         
-                rotated_y_dis = y_displacement * np.cos(obj_angle)
-                rotated_x_dis = y_displacement * np.sin(obj_angle)
-                delta_x_1, delta_y_1, delta_z_1 = (-rotated_x_dis, rotated_y_dis, -0.14)
-                delta_x_2, delta_y_2, delta_z_2 = (-rotated_x_dis, rotated_y_dis, -0.14)
-            else:
-                all_done = True
+                    # goal_pc_tensor = goal_pc_tensor.unsqueeze(0).float().permute(0,2,1).to(args.device)  # shape (1, 3, num_pts)
+
+                    current_pc_numpy = down_sampling(get_partial_pointcloud_vectorized(*camera_args) + shift, 1024)
+                    current_pc_numpy -= goal_centroid
+                    current_pc_numpy[:,2] -= min_z_goal
+                    
+                    current_pc_tensor = torch.from_numpy(current_pc_numpy.transpose(1,0)).unsqueeze(0).float().to(args.device)  
+                    
+                    print("current_pc_tensor.shape, goal_pc_tensor.shape:", current_pc_tensor.shape, goal_pc_tensor.shape)
+
+
+                    # pcd = pcd_ize(current_pc_numpy, color=[0,0,0])
+                    # pcd_goal = pcd_ize(goal_pc_numpy, color=[1,0,0])
+                    # coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+                    # open3d.visualization.draw_geometries([pcd, pcd_goal, coor])
+                                          
+                    pos, rot_mat_1, rot_mat_2 = deformernet(current_pc_tensor, goal_pc_tensor) 
+                    # pos, rot_mat_1, rot_mat_2 = deformernet(goal_pc_tensor, current_pc_tensor) 
+                    pos *= 0.001
+                    pos, rot_mat_1, rot_mat_2 = pos.detach().cpu().numpy(), rot_mat_1.detach().cpu().numpy(), rot_mat_2.detach().cpu().numpy()
+                    
+
+                desired_pos_1 = (pos[0][:3] + init_pose_1[:3,3]).flatten()
+                desired_rot_1 = rot_mat_1 @ init_pose_1[:3,:3]
+                desired_pos_2 = (pos[0][3:] + init_pose_2[:3,3]).flatten()
+                desired_rot_2 = rot_mat_2 @ init_pose_2[:3,:3]
+
+                temp1 = np.eye(4)
+                temp1[:3,:3] = rot_mat_1 
+                print("========ROBOT 1=========")        
+                print("pos:", pos)
+                print("\n")
+
+                tvc_behavior_1 = TaskVelocityControl2([*desired_pos_1, desired_rot_1], robot_1, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
+                                                    pos_threshold = 2e-3, ori_threshold=5e-2)
+                tvc_behavior_2 = TaskVelocityControl2([*desired_pos_2, desired_rot_2], robot_2, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
+                                                    pos_threshold = 2e-3, ori_threshold=5e-2)
+                  
+            # else:
+            #     rospy.logerr("Exceed max action count")
+            #     all_done = True
                  
 
-            if action_count == 2: 
+            if False:   #action_count == 2: 
                 delta_alpha_1, delta_beta_1, delta_gamma_1 = 1e-6, 1e-6, obj_angle
                 delta_alpha_2, delta_beta_2, delta_gamma_2 = 1e-6, 1e-6, obj_angle
             else:                 
@@ -610,9 +711,9 @@ if __name__ == "__main__":
                                 
             print(f"Robot 1 xyz: {delta_x_1:.2f}, {delta_y_1:.2f}, {delta_z_1:.2f}")
             print(f"Robot 2 xyz: {delta_x_2:.2f}, {delta_y_2:.2f}, {delta_z_2:.2f}")
-            print("action_count:", action_count)
             
-            action_count += 1
+            
+            
 
 
             x_1 = delta_x_1 + init_pose_1[0,3]
@@ -629,10 +730,12 @@ if __name__ == "__main__":
             beta_2 = delta_beta_2 + init_eulers_2[1]
             gamma_2 = delta_gamma_2 + init_eulers_2[2]
 
-
-            tvc_behavior_1 = TaskVelocityControl2([x_1,y_1,z_1,alpha_1,beta_1,gamma_1], robot_1, sim_params.dt, 3, vel_limits=vel_limits)
-            tvc_behavior_2 = TaskVelocityControl2([x_2,y_2,z_2,alpha_2,beta_2,gamma_2], robot_2, sim_params.dt, 3, vel_limits=vel_limits)
+            if action_count < 3:
+                tvc_behavior_1 = TaskVelocityControl2([x_1,y_1,z_1,alpha_1,beta_1,gamma_1], robot_1, sim_params.dt, 3, vel_limits=vel_limits)
+                tvc_behavior_2 = TaskVelocityControl2([x_2,y_2,z_2,alpha_2,beta_2,gamma_2], robot_2, sim_params.dt, 3, vel_limits=vel_limits)
             closed_loop_start_time = deepcopy(gym.get_sim_time(sim))
+            action_count += 1
+            
             
             state = "move to goal"
 
@@ -643,14 +746,14 @@ if __name__ == "__main__":
             contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
             if main_ins_pos_1 <= 0.042 or main_ins_pos_2 <= 0.042 or (not(20 in contacts or 21 in contacts) or not(9 in contacts or 10 in contacts)):  # lose contact w 1 robot
                 rospy.logerr("Exeeded joint limits")
-                state = "reset"
-                # all_done = True
+                # state = "reset"
+                all_done = True
 
             contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
             if (not(20 in contacts or 21 in contacts) or not(9 in contacts or 10 in contacts)):  # lose contact w either robot 2 or robot 1    
                 rospy.logerr("Lost contact with robot")
-                state = "reset"
-                # all_done = True
+                # state = "reset"
+                all_done = True
 
             if True:
 
@@ -672,7 +775,7 @@ if __name__ == "__main__":
                     # gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position() * 4)
 
                 else:   
-
+                    rospy.logerr(f"Complete action: {action_count-1}")
                     # enclosed = check_points_enclosed_by_square(get_object_particle_state(gym, sim))                                                             
                     # print("enclosed?:", enclosed)
                     # # visualize_enclosure(get_object_particle_state(gym, sim))
@@ -683,14 +786,11 @@ if __name__ == "__main__":
                             visualize_camera_views(gym, sim, envs_obj[0], cam_handles, \
                                                 resolution=[cam_props.height, cam_props.width], output_file=output_file)   
                         
-                    rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
+                    # rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
                     
                     # if sample_count == 0:
                     
-                    pc_deformable = get_partial_pointcloud_vectorized(*camera_args) + shift 
-                    full_pc_deformable = get_object_particle_state(gym, sim) + shift
-                    all_recorded_pcs.append(pc_deformable)
-                    all_recorded_full_pcs.append(full_pc_deformable)                         
+             
 
                     frame_count = 0
                     state = "get shape servo plan"
@@ -699,35 +799,16 @@ if __name__ == "__main__":
 
                     _,init_pose_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
                     init_eulers_2 = transformations.euler_from_matrix(init_pose_2)
-
-                    if len(all_recorded_pcs) == action_length:
-                        assert len(all_recorded_pcs) == len(all_recorded_full_pcs)
-                        
-                        global_all_recorded_pcs.append(deepcopy(all_recorded_pcs))
-                        global_all_recorded_full_pcs.append(deepcopy(all_recorded_full_pcs)) 
-
-                        goal_count += 1
-                        # data_point_count += 1 
-                        state = "reset"
-                        
-                        if visualization:
-                            rigid_pcd = pcd_ize(pc_rigid)
-                            deformable_pcds = []
-                            for i in range(len(all_recorded_pcs)):
-                                deformable_pcds.append(pcd_ize(all_recorded_pcs[i]))
-                            open3d.visualization.draw_geometries(deformable_pcds + [rigid_pcd])
-                                
-                        if len(global_all_recorded_pcs) == max_goal_count:
-                            assert len(global_all_recorded_pcs) == len(global_all_recorded_full_pcs) 
                             
-                            for idx, (all_recorded_pcs, all_recorded_full_pcs) in enumerate(zip(global_all_recorded_pcs, global_all_recorded_full_pcs)):
-                                data = {"all_recorded_pcs": all_recorded_pcs, "all_recorded_full_pcs": all_recorded_full_pcs,
-                                        "pc_rigid": pc_rigid, "obj_name": args.obj_name, "obj_angle": obj_angle,
-                                        "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
-                                data_path = f"{data_recording_path}/sample_{data_point_count // max_goal_count}_goal_{idx}.pickle"
-                                write_pickle_data(data, data_path)       
-                                # all_done = True 
-                                print_color(f"\n*** Total data point count: {len(os.listdir(data_recording_path))}\n")
+                    if action_count >= max_action_count or enclosed_percent >= 99:
+                        print_color(f"Final enclosed percentage: {enclosed_percent:.2f}", "green")
+                        data = {"enclosed_percent": enclosed_percent, 
+                                "obj_name": args.obj_name, 
+                                "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
+                        data_path = f"{results_path}/sample_{data_point_count}.pickle"
+                        write_pickle_data(data, data_path)       
+                        all_done = True 
+                        print_color(f"\n*** Total data point count: {len(os.listdir(results_path))}\n")
 
 
         if state == "reset":   
@@ -757,7 +838,7 @@ if __name__ == "__main__":
             state = "get shape servo plan"
             
 
-        if goal_count >= max_goal_count or reset_count >= max_reset_count:
+        if data_point_count >= max_data_point_count:
             all_done = True
 
         # if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:  

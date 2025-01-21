@@ -184,6 +184,50 @@ def find_min_ang_vec(world_vec, cam_vecs):
 
     return min_ang_vec, min_ang_idx
 
+def object_to_world_frame(points):
+
+    """  
+    Compute 4x4 homogeneous transformation matrix to transform object frame to world frame. 
+    The object frame is obtained by fitting a bounding box to the object partial-view point cloud.
+    The centroid of the bbox is the the origin of the object frame.
+    x, y, z axes are the orientation of the bbox.
+    We then compare these computed axes against the ground-truth axes ([1,0,0], [0,1,0], [0,0,1]) and align them properly.
+    For example, if the computed x-axis is [0.3,0.0,0.95], which is most similar to [0,0,1], this axis would be set to be the new z-axis.
+
+    (Input) points: object partial-view point cloud. Shape (num_pts, 3)
+    """
+
+    # Create a trimesh.Trimesh object from the point cloud
+    point_cloud = trimesh.points.PointCloud(points)
+
+    # Compute the oriented bounding box (OBB) of the point cloud
+    obb = point_cloud.bounding_box_oriented
+
+    homo_mat = obb.primitive.transform
+    axes = obb.primitive.transform[:3,:3]   # x, y, z axes concat together
+
+    # Find and align z axis
+    z_axis = [0., 0., 1.]
+    align_z_axis, min_ang_axis_idx = find_min_ang_vec(z_axis, axes)
+    axes = np.delete(axes, min_ang_axis_idx, axis=1)
+
+    # Find and align x axis.
+    x_axis = [1., 0., 0.]
+    align_x_axis, min_ang_axis_idx = find_min_ang_vec(x_axis, axes) 
+    axes = np.delete(axes, min_ang_axis_idx, axis=1)
+
+    # Find and align y axis
+    y_axis = [0., 1., 0.]
+    align_y_axis, min_ang_axis_idx = find_min_ang_vec(y_axis, axes) 
+
+
+    homo_mat[:3,:3] = np.column_stack((align_x_axis, align_y_axis, align_z_axis))
+
+    assert is_homogeneous_matrix(homo_mat)
+
+    return homo_mat
+
+
 def world_to_object_frame(points):
 
     """  
@@ -297,3 +341,83 @@ def random_transformation_matrix(translation_range=None, rotation_range=None):
     transformation_matrix[:3, 3] = translation
     
     return transformation_matrix
+
+
+def compute_world_to_eef(T_world_to_object, T_object_to_eef, rotate_z_axis=False, rotation_angle_deg=0):
+    """
+    Computes the transformation matrix of the robot end effector in the world frame,
+    with an optional rotation around the z-axis.
+
+    Args:
+        T_world_to_object (numpy.ndarray): 4x4 matrix transforming world frame to object frame.
+        T_object_to_eef (numpy.ndarray): 4x4 matrix representing end effector pose in object frame.
+        rotate_z_axis (bool): If True, rotates the final pose around the z-axis.
+        rotation_angle_deg (float): The angle (in degrees) to rotate around the z-axis if rotate_z_axis is True.
+
+    Returns:
+        numpy.ndarray: 4x4 transformation matrix representing the end effector pose in the world frame.
+    """
+    # Compute the transformation matrix
+    T_world_to_eef = np.dot(T_world_to_object, T_object_to_eef)
+
+    # If rotation around z-axis is requested
+    if rotate_z_axis:
+        # Compute the z-axis rotation matrix
+        theta = np.radians(rotation_angle_deg)
+        R_z = np.array([
+            [np.cos(theta), -np.sin(theta), 0, 0],
+            [np.sin(theta), np.cos(theta), 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+
+        # Apply the rotation to the resulting transformation matrix
+        T_world_to_eef = np.dot(T_world_to_eef, R_z)
+
+    return T_world_to_eef
+
+
+def compose_4x4_homo_mat(rotation, translation):
+    ht_matrix = np.eye(4)
+    ht_matrix[:3, :3] = rotation
+    ht_matrix[:3, 3] = translation
+    return ht_matrix
+
+
+def compute_object_to_eef(T_world_to_object, T_world_to_eef):
+    """
+    Computes the transformation matrix of the robot end effector in the object frame.
+
+    Args:
+        T_world_to_object (numpy.ndarray): 4x4 matrix transforming world frame to object frame.
+        T_world_to_eef (numpy.ndarray): 4x4 matrix representing end effector pose in world frame.
+
+    Returns:
+        numpy.ndarray: 4x4 transformation matrix representing the end effector pose in the object frame.
+    """
+    # Compute the inverse of T_world_to_object
+    R = T_world_to_object[:3, :3]  # Extract the 3x3 rotation matrix
+    t = T_world_to_object[:3, 3]   # Extract the 3x1 translation vector
+
+    R_inv = R.T  # Transpose of the rotation matrix
+    t_inv = -np.dot(R_inv, t)  # Inverse translation
+
+    # Construct the inverse transformation matrix
+    T_object_to_world = np.eye(4)
+    T_object_to_world[:3, :3] = R_inv
+    T_object_to_world[:3, 3] = t_inv
+
+    # Compute T_object_to_eef
+    T_object_to_eef = np.dot(T_object_to_world, T_world_to_eef)
+    
+    return T_object_to_eef
+
+
+def rotate_around_z(ht_matrix, angle):
+    rotation_z = np.array([
+        [np.cos(angle), -np.sin(angle), 0, 0],
+        [np.sin(angle),  np.cos(angle), 0, 0],
+        [0,              0,             1, 0],
+        [0,              0,             0, 1]
+    ])
+    return np.dot(rotation_z, ht_matrix)

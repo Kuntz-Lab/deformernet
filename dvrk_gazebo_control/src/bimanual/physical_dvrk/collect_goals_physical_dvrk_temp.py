@@ -103,7 +103,7 @@ if __name__ == "__main__":
     sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, sim_params)
 
     # Get primitive shape dictionary to know the dimension of the object   
-    object_meshes_path = f"/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_{object_category}Pa"    # _eval  
+    object_meshes_path = f"/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_{object_category}Pa_eval"    
     with open(os.path.join(object_meshes_path, f"primitive_dict_{args.prim_name}.pickle"), 'rb') as handle:
         data = pickle.load(handle)    
     if args.prim_name == "box":
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
-    asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa" # _eval
+    asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa_eval"
     soft_asset_file = args.obj_name + ".urdf"    
 
 
@@ -324,7 +324,7 @@ if __name__ == "__main__":
     #     max_data_point_per_variation = 9600
     # else:
 
-    max_data_point_per_variation = data_point_count + 1 #150
+    max_data_point_per_variation = data_point_count + 150
     # print_color("original data_point_count: " + str(data_point_count), "green")
 
 
@@ -507,7 +507,20 @@ if __name__ == "__main__":
             
             if args.prim_name in ["box", "cylinder"]:
                 max_x = max_z = 0.2
-                max_y = h * 1/2 * 2/3
+                max_y = h * 1/2
+
+                # print("computed max:", max_x, max_y, max_z)
+            # elif args.prim_name == "hemis":    
+            #     # print("ee_ratio:", ee_ratio)
+            #     ee_ratio_val = [0.5, 0.85]
+            #     max_val = np.array([object_length/2 * 3/4, r/0.2 * 0.08])
+            #     f = interpolate.interp1d(ee_ratio_val, max_val, fill_value='extrapolate') 
+            #     max_x = f(ee_ratio)
+            #     max_y, max_z = deepcopy(max_x), deepcopy(max_x)
+            #     # print("computed max:", max_x, max_y, max_z)
+            #     max_z *= 3/4                
+            # else:
+            #     raise Exception("Wrong object category")
 
             max_delta_x1_x2 = h * 3/4
             delta_x_1 = np.random.uniform(low = -max_x, high = max_x)
@@ -523,7 +536,11 @@ if __name__ == "__main__":
             upper_bound_z = min(max_z, delta_z_1 + max_delta_x1_x2)
             delta_z_2 = np.random.uniform(low = lower_bound_z, high = upper_bound_z)
             
-                 
+            # print(max_delta_x1_x2)
+            # print("delta_x_1, delta_z_1:", delta_x_1, delta_z_1)
+            # print("lower_bound_x, upper_bound_x:", lower_bound_x, upper_bound_x)
+            # print("lower_bound_z, upper_bound_z:", lower_bound_z, upper_bound_z)
+                  
             delta_alpha_1 = np.random.uniform(low = -np.pi/8, high = np.pi/8)
             delta_beta_1 = np.random.uniform(low = -np.pi/8, high = np.pi/8) 
             delta_gamma_1 = np.random.uniform(low = -np.pi/8, high = np.pi/8)

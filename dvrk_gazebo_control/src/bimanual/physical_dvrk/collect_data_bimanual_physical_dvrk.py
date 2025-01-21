@@ -652,29 +652,29 @@ if __name__ == "__main__":
                     _, final_trans_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
                     # print("***Final x, y, z: ", final_pose["pose"]["p"]["x"], final_pose["pose"]["p"]["y"], final_pose["pose"]["p"]["z"] ) 
                     
-                    # for j, (curr_trans_1, curr_trans_2) in enumerate(zip(curr_trans_on_trajectory_1, curr_trans_on_trajectory_2)):    
-                    #     # print(j)                    
-                    #     p_1, R_1, twist_1 = tvc_behavior_1.get_transform(curr_trans_1, final_trans_1, get_twist=True)
-                    #     mani_point_1 = curr_trans_1
+                    for j, (curr_trans_1, curr_trans_2) in enumerate(zip(curr_trans_on_trajectory_1, curr_trans_on_trajectory_2)):    
+                        # print(j)                    
+                        p_1, R_1, twist_1 = tvc_behavior_1.get_transform(curr_trans_1, final_trans_1, get_twist=True)
+                        mani_point_1 = curr_trans_1
 
-                    #     p_2, R_2, twist_2 = tvc_behavior_2.get_transform(curr_trans_2, final_trans_2, get_twist=True)
-                    #     mani_point_2 = curr_trans_2
+                        p_2, R_2, twist_2 = tvc_behavior_2.get_transform(curr_trans_2, final_trans_2, get_twist=True)
+                        mani_point_2 = curr_trans_2
 
-                    #     partial_pcs = (pc_on_trajectory[j], pc_goal)
-                    #     full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
+                        partial_pcs = (pc_on_trajectory[j], pc_goal)
+                        full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
 
-                    #     mani_point = np.array([mani_point_1[0,3], mani_point_1[1,3]- two_robot_offset, mani_point_1[2,3] + ROBOT_Z_OFFSET,
-                    #                            -mani_point_2[0,3], -mani_point_2[1,3], mani_point_2[2,3] + ROBOT_Z_OFFSET]) \
-                    #                 + np.concatenate((shift, shift))
+                        mani_point = np.array([mani_point_1[0,3], mani_point_1[1,3]- two_robot_offset, mani_point_1[2,3] + ROBOT_Z_OFFSET,
+                                               -mani_point_2[0,3], -mani_point_2[1,3], mani_point_2[2,3] + ROBOT_Z_OFFSET]) \
+                                    + np.concatenate((shift, shift))
 
-                    #     data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
-                    #             "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
-                    #             "mani_point": mani_point, "obj_name": args.obj_name}
+                        data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
+                                "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
+                                "mani_point": mani_point, "obj_name": args.obj_name}
 
-                    #     # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
-                    #     #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
-                    #     print("New data_point_count:", data_point_count)
-                    #     data_point_count += 1       
+                        # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
+                        #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
+                        print("New data_point_count:", data_point_count)
+                        data_point_count += 1       
 
 
                     if sample_count == 0:
