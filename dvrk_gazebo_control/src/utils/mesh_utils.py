@@ -43,15 +43,17 @@ def sample_points_from_tet_mesh(mesh, k):
 
 
 def create_tet_mesh(mesh_dir, intput_tri_mesh_name, output_tet_mesh_name=None, mesh_extension='.stl', 
-                    coarsen=True, verbose=False, fTetWild_dir='/home/baothach/fTetWild/build'):
+                    coarsen=True, verbose=False, fTetWild_dir='/home/baothach/fTetWild/build', tri_mesh_dir=None):
     
     if output_tet_mesh_name is None:
         output_tet_mesh_name = intput_tri_mesh_name
+    if tri_mesh_dir is None:
+        tri_mesh_dir = mesh_dir
     
     # surface mesh (.stl, .obj, etc.) to volumetric mesh (.mesh)
     import os
     os.chdir(fTetWild_dir) 
-    mesh_path = os.path.join(mesh_dir, intput_tri_mesh_name + mesh_extension)
+    mesh_path = os.path.join(tri_mesh_dir, intput_tri_mesh_name + mesh_extension)
     save_fTetwild_mesh_path = os.path.join(mesh_dir, output_tet_mesh_name + '.mesh')
     
     if coarsen:
@@ -96,7 +98,7 @@ def create_tet_mesh(mesh_dir, intput_tri_mesh_name, output_tet_mesh_name=None, m
         tet_output.write("t " + l_text + "\n")  
         
         
-def simplify_mesh_pymeshlab(mesh, target_num_vertices):
+def simplify_mesh_pymeshlab(mesh: trimesh.Trimesh, target_num_vertices: int):
     
     import pymeshlab as ml
     

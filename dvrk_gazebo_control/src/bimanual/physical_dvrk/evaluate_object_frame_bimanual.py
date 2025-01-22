@@ -654,18 +654,10 @@ if __name__ == "__main__":
 
                 eef_pose_1_world_frame = compute_world_to_eef(modified_world_to_object_H, eef_pose_1_object_frame)
                 eef_pose_2_world_frame = compute_world_to_eef(modified_world_to_object_H, eef_pose_2_object_frame) 
-                print("BEFORE eef_pose_2_world_frame:", eef_pose_2_world_frame)
+                # print("BEFORE eef_pose_2_world_frame:", eef_pose_2_world_frame)
                 eef_pose_2_world_frame = rotate_around_z(eef_pose_2_world_frame, np.pi) 
-                print("AFTER eef_pose_2_world_frame:", eef_pose_2_world_frame)
-                print("\n")
-
-                # print("world_to_object_H:", world_to_object_H)
-                # print("eef_pose_1_object_frame:", eef_pose_1_object_frame) 
-                # print("eef_pose_1_world_frame:", eef_pose_1_world_frame)    
-
-                test_1 = compute_object_to_eef(world_to_object_H, eef_pose_1_world_frame)       
-                # print("eef_pose_1_object_frame:", eef_pose_1_object_frame)
-                # print("test_1:", test_1)
+                # print("AFTER eef_pose_2_world_frame:", eef_pose_2_world_frame)
+                # print("\n")
                     
                 desired_pos_1 = (eef_pose_1_world_frame[:3,3] + init_pose_1[:3,3]).flatten()
                 desired_rot_1 = eef_pose_1_world_frame[:3,:3] @ init_pose_1[:3,:3]

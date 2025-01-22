@@ -7,5 +7,6 @@
     "python.analysis.extraPaths": [
         "/home/baothach/dvrk_shape_servo/devel/lib/python2.7/dist-packages",
         "/opt/ros/melodic/lib/python2.7/dist-packages"
-    ]
+    ],
+    "cmake.sourceDirectory": "/home/baothach/dvrk_shape_servo/src/dvrk_env/dvrk_gazebo_control"
 }

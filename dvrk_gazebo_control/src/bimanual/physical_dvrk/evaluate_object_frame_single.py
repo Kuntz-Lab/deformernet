@@ -40,9 +40,12 @@ from sklearn.neighbors import NearestNeighbors
 
 from core import Robot
 from behaviors import MoveToPose, TaskVelocityControl, TaskVelocityControl2
-
+from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data, pcd_ize
+from utils.point_cloud_utils import down_sampling, transform_point_cloud, compute_world_to_eef, compose_4x4_homo_mat, compute_object_to_eef, rotate_around_z, is_homogeneous_matrix, find_min_ang_vec, pcd_ize
+from utils.object_frame_utils import find_pca_axes
 
 import torch
+import trimesh
 
 
 
@@ -52,6 +55,85 @@ ROBOT_Z_OFFSET = 0.25
 two_robot_offset = 0.86
 
 
+# def world_to_object_frame_single(points):
+
+#     # Create a trimesh.Trimesh object from the point cloud
+#     point_cloud = trimesh.points.PointCloud(points)
+
+#     # Compute the oriented bounding box (OBB) of the point cloud
+#     obb = point_cloud.bounding_box_oriented
+
+#     homo_mat = obb.primitive.transform
+#     axes = obb.primitive.transform[:3,:3]   # x, y, z axes concat together
+
+#     # Find and align z axis
+#     z_axis = [0., 0., 1.]
+#     align_z_axis, min_ang_axis_idx = find_min_ang_vec(z_axis, axes)
+    
+#     # Remove the aligned Z-axis from the original axes
+#     remaining_axes = np.delete(axes, min_ang_axis_idx, axis=1)
+
+#     # Assign X and Y axes to maintain a proper coordinate system
+#     align_x_axis = remaining_axes[:, 0]
+#     align_y_axis = np.cross(align_z_axis, align_x_axis)  # Compute orthogonal Y-axis
+
+#     R_o_w = np.column_stack((align_x_axis, align_y_axis, align_z_axis))
+    
+#     # Transpose to get rotation from world to object frame.
+#     R_w_o = np.transpose(R_o_w)
+#     d_w_o_o = np.dot(-R_w_o, homo_mat[:3,3])
+    
+#     homo_mat[:3,:3] = R_w_o
+#     homo_mat[:3,3] = d_w_o_o
+
+#     assert is_homogeneous_matrix(homo_mat)
+
+#     return homo_mat
+
+def world_to_object_frame_single(obj_cloud, verbose=False):
+    '''
+    For the given object cloud, build an object frame using PCA and aligning to the
+    world frame.
+    Returns a transformation from world frame to object frame.
+    '''
+
+    # Use PCA to find a starting object frame/centroid.
+    axes, centroid = find_pca_axes(obj_cloud, verbose)
+    axes = np.matrix(np.column_stack(axes))
+
+    # Rotation from object frame to frame.
+    R_o_w = np.eye(3)
+    
+    # x axes.
+    x_axis = axes[:, 0]
+    R_o_w[0, 0] = x_axis[0, 0]
+    R_o_w[1, 0] = x_axis[1, 0]
+    R_o_w[2, 0] = x_axis[2, 0]
+
+    # y axes
+    y_axis = axes[:, 1]
+    R_o_w[0, 1] = y_axis[0, 0]
+    R_o_w[1, 1] = y_axis[1, 0]
+    R_o_w[2, 1] = y_axis[2, 0]
+
+    # z axes
+    z_axis = axes[:, 2]
+    R_o_w[0, 2] = z_axis[0, 0]
+    R_o_w[1, 2] = z_axis[1, 0]
+    R_o_w[2, 2] = z_axis[2, 0]
+
+    # Transpose to get rotation from world to object frame.
+    R_w_o = np.transpose(R_o_w)
+    d_w_o_o = np.dot(-R_w_o, centroid)
+    
+    # Build full transformation matrix.
+    trans_matrix = np.eye(4)
+    trans_matrix[:3,:3] = R_w_o
+    trans_matrix[0,3] = d_w_o_o[0]
+    trans_matrix[1,3] = d_w_o_o[1]
+    trans_matrix[2,3] = d_w_o_o[2]    
+
+    return trans_matrix#, centroid
 
 def init():
     for i in range(num_envs):
@@ -300,14 +382,13 @@ if __name__ == "__main__":
     kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
 
-    # asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/single/multi_{object_category}Pa"
-    # soft_asset_file = args.obj_name + ".urdf"
-    asset_root = os.path.join(objects_path, "urdf", "chicken_breast")
-    soft_asset_file = f"chicken_breast_{0}.urdf" 
+
+    # asset_root = os.path.join(objects_path, "urdf", "chicken_breast")
+    # soft_asset_file = f"chicken_breast_{0}.urdf" 
 
 
     soft_pose = gymapi.Transform()
-    unseen_obj_name = "chicken_breast"  
+    unseen_obj_name = None  #"chicken_breast"  
     if unseen_obj_name is not None:
         unseen_obj_path = "/home/baothach/sim_data/Custom/Custom_objects/random_stuff"
         unseen_meshes_path = os.path.join(unseen_obj_path, "mesh")
@@ -320,8 +401,8 @@ if __name__ == "__main__":
         soft_thickness = 0.001#0.0005
     
     else:
-        asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/single/multi_{args.obj_type}Pa"
-        soft_asset_file = args.obj_name + ".urdf" 
+        asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/single/multi_{object_category}Pa"
+        soft_asset_file = args.obj_name + ".urdf"
 
         if args.prim_name == "box": 
             soft_pose.p = gymapi.Vec3(0.0, -two_robot_offset/2, thickness/2 + 0.001)
@@ -517,7 +598,7 @@ if __name__ == "__main__":
     deformernet_model_main_path = "/home/baothach/shape_servo_DNN"
     if args.use_rot:
         sys.path.append(f"{deformernet_model_main_path}/rotation")
-        from architecture_2 import DeformerNetMP as DeformerNet
+        from architecture_2 import DeformerNetMP as DeformerNet                                                                                                                      
         model = DeformerNet(use_mp_input=args.use_mp_input).to(device)
         
     else:
@@ -529,15 +610,15 @@ if __name__ == "__main__":
         model = DeformerNet().to(device)
         
   
-    # weight_path = f"/home/baothach/shape_servo_data/rotation_extension/multi_{object_category}Pa/weights/run1_{weight_keyword}/"        
-    # deformernet_epoch_num = deformernet_epoch_num_dict[model_category] 
-    # model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {deformernet_epoch_num}")))  
-    # model.eval()
-    
-    if args.use_mp_input:
-        new_weight_path = f"/home/baothach/shape_servo_data/rotation_extension/single_physical_dvrk/all_objects/weights/run1_w_rot_w_MP/deformernet_w_mp"
+    object_frame = True
+    if object_frame:
+        # new_weight_path = f"/home/baothach/shape_servo_data/rotation_extension/single_physical_dvrk/all_objects_object_frame/weights/run1_w_rot_w_MP/epoch 160"
+        new_weight_path = f"/home/baothach/shape_servo_data/rotation_extension/single_physical_dvrk/all_objects_object_frame_2/weights/run1_w_rot_w_MP/epoch 200"
     else:
-        new_weight_path = f"/home/baothach/shape_servo_data/rotation_extension/single_physical_dvrk/all_objects/weights/run1_w_rot_no_MP/deformernet_no_mp"
+        if args.use_mp_input:
+            new_weight_path = f"/home/baothach/shape_servo_data/rotation_extension/single_physical_dvrk/all_objects/weights/run1_w_rot_w_MP/deformernet_w_mp"
+        else:
+            new_weight_path = f"/home/baothach/shape_servo_data/rotation_extension/single_physical_dvrk/all_objects/weights/run1_w_rot_no_MP/deformernet_no_mp"
     
     print_color(f"Loading model from: {new_weight_path}", color="yellow")
     model.load_state_dict(torch.load(new_weight_path))
@@ -546,34 +627,6 @@ if __name__ == "__main__":
 
     mp_model_main_path = "/home/baothach/shape_servo_DNN/learn_mp"
     sys.path.append(mp_model_main_path)
-
-
-
-    ### Set up manipulation point model
-    # if args.mp_method == "dense_predictor" or args.mp_method == "keypoint":
-    #     from dense_predictor_pointconv_architecture import DensePredictor
-        
-    #     mp_seg_model = DensePredictor(num_classes=2).to(device)
-
-    #     # if object_category == "box_1k11xxx":
-    #     #     weight_path = f"/home/baothach/shape_servo_data/manipulation_points/multi_box_5kPa/weights/seg/run1"
-    #     #     # rospy.logerr("Using box 5k seg instead")
-    #     #     mp_seg_model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {124}")))
-    #     # else:
-    #     weight_path = f"/home/baothach/shape_servo_data/manipulation_points/multi_{object_category}Pa/weights/seg/run1"        
-    #     mp_seg_model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {mp_dense_epoch_num}")))       
-        
-   
-    #     mp_seg_model.eval()
-
-    # elif args.mp_method == "classifier":
-    #     from architecture_classifier import ManiPointNet  
-        
-    #     mp_classifier_model = ManiPointNet(normal_channel=False).to(device)
-    #     weight_path = f"/home/baothach/shape_servo_data/manipulation_points/multi_{object_category}Pa/weights/classifier/run1"
-        
-    #     mp_classifier_model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {mp_classifier_epoch_num}")))    
-    #     mp_classifier_model.eval()    
 
 
     goal_recording_path = f"/home/baothach/shape_servo_data/rotation_extension/single_physical_dvrk/goal_data/{object_category}" 
@@ -666,27 +719,6 @@ if __name__ == "__main__":
                     init_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
                     first_time = False
                 
-                # # state = "get shape servo plan"
-                
-                # desired_position = np.array([0.,0.,0.]) # Set intiial desired gripper position
-                # # frame_count = 0
-
-                # gym.set_actor_rigid_body_states(envs[i], kuka_handles_2[i], saved_robot_contact_state, gymapi.STATE_ALL) 
-                # gym.set_particle_state_tensor(sim, gymtorch.unwrap_tensor(saved_obj_contact_state))
-                # gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka2", "psm_tool_gripper1_joint"), 0.35)
-                # gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka2", "psm_tool_gripper2_joint"), -0.35)  
-                # dof_props_2['driveMode'][:8].fill(gymapi.DOF_MODE_VEL)
-                # dof_props_2["stiffness"][:8].fill(0.0)
-                # dof_props_2["damping"][:8].fill(200.0)
-                # gym.set_actor_dof_properties(env, kuka_handles_2[i], dof_props_2)
-                
-                # shapesrv_start_time = timeit.default_timer()
-                # # open3d.visualization.draw_geometries([pcd_goal])
-
-
-                # # anchor_pose = deepcopy(init_pose)
-                # # anchor_eulers = deepcopy(init_eulers)    
-
                 frame_count = 0
                 state = "generate preshape"
                 
@@ -799,86 +831,107 @@ if __name__ == "__main__":
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state)
 
+            current_pc_numpy = down_sampling(get_partial_pointcloud_vectorized(*camera_args))   # + shift)                  
+            mani_point = init_pose[:3,3] * np.array([-1,-1,1]) + np.array([0,0, ROBOT_Z_OFFSET])
 
-            current_pc_numpy = down_sampling(get_partial_pointcloud_vectorized(*camera_args) + shift)                  
-                            
-            pcd = open3d.geometry.PointCloud()
-            pcd.points = open3d.utility.Vector3dVector(current_pc_numpy)  
-            pcd.paint_uniform_color([0,0,0])
-            open3d.visualization.draw_geometries([pcd, pcd_goal]) 
+            # Transform points and manipulation positions
+            if object_frame:
+                # world_to_object_H = world_to_object_frame_PCA(current_pc_numpy)
+                world_to_object_H = world_to_object_frame_single(current_pc_numpy)
+                current_pc_numpy = transform_point_cloud(current_pc_numpy, world_to_object_H)
+                
+                transformed_goal_pc_numpy = transform_point_cloud(goal_pc_numpy - shift, world_to_object_H)
+                # transformed_goal_pc_numpy = transform_point_cloud(goal_pc_numpy, world_to_object_H)
+                goal_pc_tensor = torch.from_numpy(transformed_goal_pc_numpy).permute(1,0).unsqueeze(0).float().to(device) 
+                pcd_goal = pcd_ize(transformed_goal_pc_numpy, color=[1,0,0])
 
+                mani_point = transform_point_cloud(mani_point.reshape(1, -1), world_to_object_H).flatten()
+            else:
+                current_pc_numpy += shift
+                mani_point += shift
 
-            node_dist = np.linalg.norm(full_pc_goal - get_point_cloud())
+            pcd = pcd_ize(current_pc_numpy, color=[0,0,0])
+
+            node_dist = np.linalg.norm(full_pc_goal - (get_object_particle_state(gym, sim) + shift))
             saved_nodes.append(node_dist)
             rospy.logwarn(f"Node distance: {node_dist}")
 
             chamfer_dist = np.linalg.norm(np.asarray(pcd_goal.compute_point_cloud_distance(pcd)))
             saved_chamfers.append(chamfer_dist)
             rospy.logwarn(f"chamfer distance: {chamfer_dist}")
-        
-            if args.use_mp_input:
-                mani_point = init_pose[:3,3] * np.array([-1,-1,1]) + np.array([0,0, ROBOT_Z_OFFSET]) + shift
-               
-                neigh = NearestNeighbors(n_neighbors=50)
-                neigh.fit(current_pc_numpy)
-                _, nearest_idxs = neigh.kneighbors(mani_point.reshape(1, -1))
-                mp_channel = np.zeros(current_pc_numpy.shape[0])
-                mp_channel[nearest_idxs.flatten()] = 1
-                
-                modified_pc = np.vstack([current_pc_numpy.transpose(1,0), mp_channel])
-                current_pc_tensor = torch.from_numpy(modified_pc).unsqueeze(0).float().to(device)                
-            
-            else:
-                current_pc_tensor = torch.from_numpy(current_pc_numpy).permute(1,0).unsqueeze(0).float().to(device)
 
+            # Add manipulation point channel
+            neigh = NearestNeighbors(n_neighbors=50)
+            neigh.fit(current_pc_numpy)
+            _, nearest_idxs = neigh.kneighbors(mani_point.reshape(1, -1))
+            mp_channel = np.zeros(current_pc_numpy.shape[0])
+            mp_channel[nearest_idxs.flatten()] = 1
+            
+            modified_pc = np.vstack([current_pc_numpy.transpose(1,0), mp_channel])
+            current_pc_tensor = torch.from_numpy(modified_pc).unsqueeze(0).float().to(device)                
+
+
+            colors = np.zeros((1024,3))
+            colors[nearest_idxs.flatten()] = [1,0,0]
+            pcd.colors =  open3d.utility.Vector3dVector(colors)
+            mani_point_sphere = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
+            mani_point_sphere.paint_uniform_color([0,0,1])
+            mani_point_sphere.translate(tuple(mani_point))
+            coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+
+            if object_frame: 
+                coor_object = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.15)
+                coor_object.transform(world_to_object_H)   
+                open3d.visualization.draw_geometries([pcd, deepcopy(pcd_goal).translate((0.00,0,0)), \
+                                                    mani_point_sphere, coor, coor_object])
+            else:
+                open3d.visualization.draw_geometries([pcd, deepcopy(pcd_goal).translate((0.00,0,0)), \
+                                                    mani_point_sphere, coor]) 
+                
            
             with torch.no_grad():
-                if not args.use_rot:
-                    desired_position = model(current_pc_tensor, goal_pc_tensor)[0].cpu().detach().numpy()*(0.001) 
-                    tvc_behavior = TaskVelocityControl(list(desired_position), robot, sim_params.dt, 3, vel_limits=vel_limits)
-                    print("from model:", desired_position)
-                    print("ground truth: ", goal_position)   
-                else:
-                    pos, rot_mat = model(current_pc_tensor, goal_pc_tensor) 
-                    pos *= 0.001
-                    pos, rot_mat = pos.detach().cpu().numpy(), rot_mat.detach().cpu().numpy()
+                pos, rot_mat = model(current_pc_tensor, goal_pc_tensor) 
+                pos *= 0.001
+                pos, rot_mat = pos.detach().cpu().numpy(), rot_mat.detach().cpu().numpy()
+
+            if object_frame:
+                eef_pose_object_frame = compose_4x4_homo_mat(rot_mat, pos[0][:3])
+                
+                modified_world_to_object_H = deepcopy(world_to_object_H)
+                modified_world_to_object_H[:3,3] = 0
+
+                eef_pose_world_frame = compute_world_to_eef(modified_world_to_object_H, eef_pose_object_frame)
+                eef_pose_world_frame = rotate_around_z(eef_pose_world_frame, np.pi)
                     
-                    # if max(abs(pos.squeeze())) >= 0.08:
-                    #     pos *= (0.05/max(abs(pos.squeeze())))
+                desired_pos = (eef_pose_world_frame[:3,3] + init_pose[:3,3]).flatten()
+                desired_rot = eef_pose_world_frame[:3,:3] @ init_pose[:3,:3]
+                
+                goal_world_frame = compose_4x4_homo_mat(np.eye(3), goal_pos.flatten())
+                goal_world_frame = rotate_around_z(goal_world_frame, np.pi)
+                goal_object_frame = compute_object_to_eef(world_to_object_H, goal_world_frame) 
 
-                    # if args.prim_name == "box": #in ["box", "cylinder"]:
-                    #     pos *= 3/4
-                    # elif args.prim_name == "cylinder":
-                    #     pos[0][:2] *= 3/4
-                    # elif args.prim_name == "hemis":
-                    #     pass
-                    # else:
-                    #     raise Exception("Wrong object category")
+                print("predicted pos (obj frame):", pos)
+                print("goal pos (obj frame):", goal_object_frame)
+                print("\n")
+                
+                print("predicted pos (world):", eef_pose_world_frame[:3,3])
+                print("goal pos (world):", goal_pos.flatten())
+                print("\n")
+                
+            else:
 
-                    # if args.prim_name == "box" and first_time and h <= 0.25:
-                    #     # pos[0][2] = 0.05
-                    #     pos[0][2] = max(0.05, pos[0][2])
-                    #     temp = max(w / 2 * 0.5, abs(pos[0][0]))
-                    #     pos[0][0] *= temp/abs(pos[0][0])
-                    #     first_time = False                   
+                desired_pos = (pos + init_pose[:3,3]).flatten()
+                desired_rot = rot_mat @ init_pose[:3,:3]
 
+                temp1 = np.eye(4)
+                temp1[:3,:3] = rot_mat
+                temp2 = np.eye(4)
+                temp2[:3,:3] = goal_rot            
+                print("pos, rot_mat:", pos, transformations.euler_from_matrix(temp1))
+                print("goal_pos, goal_rot:", goal_pos, transformations.euler_from_matrix(temp2)) 
 
-                    desired_pos = (pos + init_pose[:3,3]).flatten()
-                    desired_rot = rot_mat @ init_pose[:3,:3]
-
-
-
-                    tvc_behavior = TaskVelocityControl2([*desired_pos, desired_rot], robot, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
-                                                        pos_threshold = 2e-3, ori_threshold=5e-2)
-
-                    temp1 = np.eye(4)
-                    temp1[:3,:3] = rot_mat
-                    temp2 = np.eye(4)
-                    temp2[:3,:3] = goal_rot            
-                    print("pos, rot_mat:", pos, transformations.euler_from_matrix(temp1))
-                    print("goal_pos, goal_rot:", goal_pos, transformations.euler_from_matrix(temp2)) 
-
-
+            tvc_behavior = TaskVelocityControl2([*desired_pos, desired_rot], robot, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
+                                                pos_threshold = 2e-3, ori_threshold=5e-2)
             closed_loop_start_time = deepcopy(gym.get_sim_time(sim))
 
             state = "move to goal"
