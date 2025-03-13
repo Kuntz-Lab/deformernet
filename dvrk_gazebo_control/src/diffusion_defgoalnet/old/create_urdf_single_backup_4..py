@@ -1,36 +1,31 @@
 import os
 import pickle
 
-
-urdf_path = "/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/single/multi_box_1kPa"
+main_path = "/home/baothach/shape_servo_data/diffusion_defgoalnet/object_data/retraction_cutting"
+urdf_path = os.path.join(main_path, "urdf")
+# mesh_path = os.path.join(main_path, "mesh")
 os.makedirs(urdf_path,exist_ok=True)
 
-mesh_path = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_1kPa"
-mesh_relative_path = "/".join(mesh_path.split("/")[-3:])
-
-shape_name = "box"
+shape_name = "cylinder"
 
 density = 100
-# youngs = 1e3
+youngs = "1e4"
 poissons = 0.3
-scale = 1.0
+scale = 1
 attach_dist = 0.01
 
 
-with open(os.path.join(mesh_path, "primitive_dict_box.pickle"), 'rb') as handle:
-    data = pickle.load(handle)
 
-for i in range(100):
+for i in range(0,2):
+    object_name = f"{shape_name}_{i}"
+    base_name = f"{shape_name}_{i}_base" # 
 
-    object_name = shape_name + "_" + str(i)
-    height = data[object_name]["height"]
-    width = data[object_name]["width"]
-    thickness = data[object_name]["thickness"]
-    youngs = round(data[object_name]["youngs"])
+    # with open(os.path.join(mesh_path, object_name + ".pickle"), 'rb') as handle:
+    #     data = pickle.load(handle)
 
-    cur_urdf_path = urdf_path + '/' + shape_name + "_" + str(i) + '.urdf'
-    
+    cur_urdf_path = urdf_path + '/' + object_name + '.urdf'
     f = open(cur_urdf_path, 'w')
+    
     urdf_str = f"""<?xml version="1.0" encoding="utf-8"?>    
     
     <robot name="{object_name}">
@@ -40,24 +35,24 @@ for i in range(100):
                 <density value="{density}" />
                 <youngs value="{youngs}"/>
                 <poissons value="{poissons}"/>
-                <damping value="0.0" /> 
+                <damping value="0.0" />
                 <attachDistance value="{attach_dist}"/>
-                <tetmesh filename="../../../../{mesh_relative_path}/{object_name+".tet"}"/>
+                <tetmesh filename="../mesh/{object_name+".tet"}"/>
                 <scale value="{scale}"/>
             </fem>
         </link>
-        
+
         <link name="fix_frame">
             <visual>
-                <origin xyz="{-height*scale/2. - 10.0:.3f} 0.0 0.0"/>              
+                <origin xyz="0.0 0.0 {0.0:.3f}"/>              
                 <geometry>
-                    <box size="0.005 {width*scale:.3f} {thickness*scale:.3f}"/>
+                    <mesh filename="../mesh/{base_name+".obj"}" scale="{scale} {scale} {scale}"/>
                 </geometry>
             </visual>
             <collision>
-                <origin xyz="{-height*scale/2.:.3f} 0.0 0.0\"/>              
+                <origin xyz="0.0 0.0 {0.0}"/>           
                 <geometry>
-                    <box size="0.005 {width*scale:.3f} {thickness*scale:.3f}"/>
+                    <mesh filename="../mesh/{base_name+".obj"}" scale="{scale} {scale} {scale}"/>
                 </geometry>
             </collision>
             <inertial>
@@ -68,14 +63,16 @@ for i in range(100):
         
         <joint name = "attach" type = "fixed">
             <origin xyz = "0.0 0.0 0.0" rpy = "0 0 0"/>
-            <parent link = "{object_name}"/>
+            <parent link ="{object_name}"/>
             <child link = "fix_frame"/>
         </joint>  
-        
+
+
+
+
     </robot>
     """
 
     f.write(urdf_str)
     f.close()
 
-# <origin xyz="{-height*scale/2. - 10.0:.3f} 0.0 0.0"/>

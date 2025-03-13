@@ -287,7 +287,7 @@ class GenGraspPreshape():
             # w_prime = 0#obj.width/2 * 0.8   # tube connect final
             # h_prime = -obj.height/2 * 0.4  #0.7             
             w_prime = obj.width/2 * 0
-            h_prime = -obj.height/2 * 0.8    
+            h_prime = 0 #-obj.height/2 * 0.8    
             # w_prime = np.random.uniform(low = -obj.width/2*0.85 , high = obj.width/2*0.85) # bimanual box and cylinder
             # h_prime = np.random.uniform(low = -obj.height/2*0.85 , high = -obj.height/2*0.1)   
             # w_prime = obj.width/2*0.7#np.random.uniform(low = -obj.width/2*0.7 , high = obj.width/2*0.7) # bimanual hemis
@@ -313,11 +313,17 @@ class GenGraspPreshape():
             # w_prime = np.random.uniform(low = -obj.width/2*0.8 , high = obj.width/2*0.8)    # bimanual physical dvrk  
             # h_prime = np.random.uniform(low = -obj.height/2*0.8 , high = -obj.height/2*0.4)   
 
+            # w_prime = np.random.uniform(low = -obj.width/2*0.8 , high = obj.width/2*0.8)    # single CAO  
+            # h_prime = np.random.uniform(low = -obj.height/2*0.8 , high = obj.height/2*0.8)   
+
         else:
             # w_prime = np.random.uniform(low = -obj.width/2*0.8 , high = obj.width/2*0.8)    # bimanual physical dvrk 
             # h_prime = np.random.uniform(low = obj.height/2*0.4 , high = obj.height/2*0.8) 
+            
             # w_prime = np.random.uniform(low = -obj.width/2*0.8 , high = obj.width/2*0.8)    # single physical dvrk 
             # h_prime = np.random.uniform(low = obj.height/2*0.2 , high = obj.height/2*0.8) 
+            # w_prime = np.random.uniform(low = -obj.width/2*0.9 , high = obj.width/2*0.9)
+            # h_prime = np.random.uniform(low = obj.height/2*0.6 , high = obj.height/2*0.9)
 
             # w_prime = np.random.uniform(low = -obj.width/2*0.8 , high = obj.width/2*0.8) # chicken breast
             # h_prime = np.random.uniform(low = obj.height/2*0.7 , high = obj.height/2*0.85)
@@ -331,8 +337,8 @@ class GenGraspPreshape():
             # w_prime = 0   # dynamics cylinder
             # h_prime = np.random.uniform(low = 0 , high = obj.height/2*0.8) 
 
-            w_prime = 0#obj.width/2 * 0.2
-            h_prime = obj.height/2 * 0.8 
+            w_prime = obj.width/2 * 0.4
+            h_prime = obj.height/2 * 0.4 
 
             # w_prime = np.random.uniform(low = -obj.width/2*0.7 , high = obj.width/2*0.7) # evaluate bimanual hemis
             # h_prime = np.random.uniform(low = obj.height/2*0.6 , high = obj.height/2*0.7)  

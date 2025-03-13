@@ -363,11 +363,12 @@ if __name__ == "__main__":
     cam_props = gymapi.CameraProperties()
     cam_props.width = cam_width
     cam_props.height = cam_height
-    # cam_positions.append(gymapi.Vec3(0.12, -0.55, 0.15))
+    # # cam_positions.append(gymapi.Vec3(0.12, -0.55, 0.15))
     cam_positions.append(gymapi.Vec3(0.17, -0.62, 0.2))
     cam_targets.append(gymapi.Vec3(0.0, 0.40-two_robot_offset, 0.01))
   
-
+    # cam_positions.append(gymapi.Vec3(-0.0, soft_pose.p.y + 0.001, 0.4))   # put camera on top of object
+    # cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
     
     for i, env_obj in enumerate(envs_obj):
             cam_handles.append(gym.create_camera_sensor(env_obj, cam_props))
@@ -548,7 +549,7 @@ if __name__ == "__main__":
             delta_y = np.random.uniform(low = 0.0, high = max_y)
             delta_z = np.random.uniform(low = 0.03, high = max_z)    
 
-       
+            delta_x, delta_y, delta_z = -0.14, 0.14, 0.08
 
             print("select x, y, z, a, b, g:", delta_x, delta_y, delta_z, " | ", delta_alpha, delta_beta, delta_gamma)
 

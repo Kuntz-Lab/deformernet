@@ -132,6 +132,8 @@ def world_to_object_frame_single(obj_cloud, verbose=False):
     trans_matrix[0,3] = d_w_o_o[0]
     trans_matrix[1,3] = d_w_o_o[1]
     trans_matrix[2,3] = d_w_o_o[2]    
+    
+    assert is_homogeneous_matrix(trans_matrix), "Not a homogeneous matrix."
 
     return trans_matrix#, centroid
 
@@ -156,79 +158,10 @@ def get_point_cloud():
     return point_cloud.astype('float32')
 
 
-def get_mp_classifier(classifier_model, partial_init_pc, partial_goal_pc, full_init_pc, 
-                    num_candidates=400, batch_size=64, compute_method="weighted average", vis=False):
-    
-    pc_goal_tensor = torch.from_numpy(partial_goal_pc).permute(1,0).unsqueeze(0).float().to(device)    
-
-    # Sample (randomly) some points for MP candidates; only pick points that are in the top half of the object (near robot)
-    downsampled_pc = down_sampling(partial_init_pc, num_pts=512) #partial_init_pc
-    ys = downsampled_pc[:,1]
-    avg_y = (max(ys) + min(ys))/2
-    mp_candidates_idxs = np.where(ys >= avg_y)[0]     # only pick points that are in the top half of the object
-    mp_candidates_idxs = np.random.choice(mp_candidates_idxs, size = num_candidates)
-    mp_candidates = downsampled_pc[mp_candidates_idxs]
-
-    # Configure input to the neural network (concat MP to the current point cloud)
-    neigh = NearestNeighbors(n_neighbors=50)
-    neigh.fit(partial_init_pc)
-    _, nearest_idxs = neigh.kneighbors(mp_candidates)
-    mp_channel = np.zeros((mp_candidates.shape[0], partial_init_pc.shape[0]))
-    mp_channel[np.array([i // 50 for i in range(mp_candidates.shape[0]*50)]),nearest_idxs.flatten()] = 1
-
-    pcs_tensor = torch.from_numpy(partial_init_pc).permute(1,0).unsqueeze(0).repeat(mp_candidates.shape[0],1,1)
-    modified_pc_tensor = torch.cat((pcs_tensor, torch.from_numpy(mp_channel).unsqueeze(1)), dim=1).float().to(device)
-
-    pcs_goal_tensor = pc_goal_tensor.repeat(mp_candidates.shape[0],1,1)
-    # print("pcs_goal_tensor.shape, pcs_tensor.shape:", pcs_goal_tensor.shape, pcs_tensor.shape)
 
 
-    with torch.no_grad():
-        outputs = []
-        # for batch_pc, batch_pc_goal in zip(torch.split(modified_pc_tensor, num_candidates//batch_size), torch.split(pcs_goal_tensor, num_candidates//batch_size)):
-        for batch_pc, batch_pc_goal in zip(torch.split(modified_pc_tensor, batch_size), torch.split(pcs_goal_tensor, batch_size)):
-            outputs.append(classifier_model(batch_pc, batch_pc_goal))
 
-
-        output = torch.cat(tuple(outputs), dim=0)
-        success_probs = np.exp(output.cpu().detach().numpy())[:,1]
-        print("max(success_probs):", max(success_probs))       
-        if compute_method == "max":
-            best_mp = mp_candidates[np.argmax(success_probs)]   # point with the highest probability
-        elif compute_method == "weighted average":
-            best_mp = np.average(mp_candidates, axis=0, weights=success_probs)   # weighted average of all candidates, with weight equal to probability
-
-
-        if vis:
-            success_probs = (success_probs/max(success_probs))
-            
-            pcd = open3d.geometry.PointCloud()
-            pcd.points = open3d.utility.Vector3dVector(np.array(partial_init_pc))
-            pcd_goal = open3d.geometry.PointCloud()
-            pcd_goal.points = open3d.utility.Vector3dVector(np.array(partial_goal_pc))    
-
-            # Predicted MP
-            heats = np.array([[prob, 0, 0] for prob in success_probs])
-            best_mani_point = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-            best_mani_point.paint_uniform_color([0,1,0])  
-
-            colors = np.zeros(partial_init_pc.shape)
-            colors[mp_candidates_idxs] = heats  
-            pcd.colors =  open3d.utility.Vector3dVector(colors) 
-            
-            # Ground truth MP
-            mani_point = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-            mani_point.paint_uniform_color([0,0,1])
-           
-            # Visualization
-            open3d.visualization.draw_geometries([pcd, mani_point.translate(tuple(gt_mp)), best_mani_point.translate(tuple(best_mp)), \
-                                                    pcd_goal.translate((0.2,0,0))])  
-        
-
-    return best_mp
-
-
-def get_mp_seg(seg_model, pc_init_numpy, pc_initial_tensor, pc_goal_tensor, compute_method="max", vis=False, num_kp_candidates=100):
+def get_mp_seg(seg_model, pc_init_numpy, pc_goal_numpy, pc_initial_tensor, pc_goal_tensor, compute_method="max", vis=False, num_kp_candidates=100):
     output = seg_model(pc_initial_tensor, pc_goal_tensor)
     success_probs = np.exp(output.squeeze().cpu().detach().numpy())[1,:]
     # print("total candidates:", sum([1 if s>0.5 else 0 for s in success_probs]))
@@ -243,7 +176,7 @@ def get_mp_seg(seg_model, pc_init_numpy, pc_initial_tensor, pc_goal_tensor, comp
         best_candidates =  pc_init_numpy[np.argsort(success_probs)[-num_kp_candidates:]]
         dists_to_gt = np.linalg.norm(gt_mp-best_candidates, axis=1)
         best_mp = best_candidates[np.argsort(dists_to_gt)[-1]]
-
+    print_color(f"*** best_mp: {best_mp}", color="yellow")
     if vis:
         pcd = open3d.geometry.PointCloud()
         pcd.points = open3d.utility.Vector3dVector(np.array(pc_init_numpy))
@@ -252,14 +185,18 @@ def get_mp_seg(seg_model, pc_init_numpy, pc_initial_tensor, pc_goal_tensor, comp
         best_mani_point.paint_uniform_color([0,1,0])  
         best_mani_point.translate(tuple(best_mp))
 
+        transformed_gt_mp = transform_point_cloud(gt_mp.reshape(1, -1), world_to_object_H).flatten()
         gt_mani_point = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
         gt_mani_point.paint_uniform_color([0,0,1])
-        gt_mani_point.translate(tuple(gt_mp))
+        gt_mani_point.translate(tuple(transformed_gt_mp))
 
-        heats = np.array([[prob, 0, 0] for prob in success_probs/max(success_probs)])
+        heats = np.array([[0, prob, 0] for prob in success_probs/max(success_probs)])
         pcd.colors =  open3d.utility.Vector3dVector(heats) 
 
-        open3d.visualization.draw_geometries([pcd, best_mani_point, deepcopy(pcd_goal).translate((0.2,0,0)), gt_mani_point])
+        pcd_goal_temp = pcd_ize(pc_goal_numpy, color=[1,0,0])
+        coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+        open3d.visualization.draw_geometries([pcd, best_mani_point, deepcopy(pcd_goal_temp), gt_mani_point, coor])
+        # open3d.visualization.draw_geometries([pcd, best_mani_point, gt_mani_point, coor])
     
     return best_mp
 
@@ -388,7 +325,7 @@ if __name__ == "__main__":
 
 
     soft_pose = gymapi.Transform()
-    unseen_obj_name = None  #"chicken_breast"  
+    unseen_obj_name = None  #"chicken_breast" None  
     if unseen_obj_name is not None:
         unseen_obj_path = "/home/baothach/sim_data/Custom/Custom_objects/random_stuff"
         unseen_meshes_path = os.path.join(unseen_obj_path, "mesh")
@@ -500,7 +437,9 @@ if __name__ == "__main__":
 
     cam_positions.append(gymapi.Vec3(-0.0, soft_pose.p.y + 0.001, 0.4))   # put camera on top of object
     cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
-  
+
+    # cam_positions.append(gymapi.Vec3(0.17, -0.62, 0.2))
+    # cam_targets.append(gymapi.Vec3(0.0, 0.40-two_robot_offset, 0.01))  
 
     
     for i, env_obj in enumerate(envs_obj):
@@ -608,8 +547,19 @@ if __name__ == "__main__":
         else:
             from architecture import DeformerNet
         model = DeformerNet().to(device)
+
+    ### Set up manipulation point model
+    mp_model_main_path = "/home/baothach/shape_servo_DNN/learn_mp"
+    sys.path.append(mp_model_main_path)
+    if args.mp_method == "dense_predictor":
+        from dense_predictor_pointconv_architecture import DensePredictor
         
-  
+        mp_seg_model = DensePredictor(num_classes=2).to(device)
+        # weight_path = "/home/baothach/shape_servo_data/manipulation_points/single_physical_dvrk/all_objects/weights/all_boxes_object_frame_multi_cameras"      
+        # mp_seg_model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {300}")))          
+        weight_path = "/home/baothach/shape_servo_data/manipulation_points/single_physical_dvrk/all_objects/weights/all_boxes_object_frame_multi_cameras_2"      
+        mp_seg_model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {200}")))      
+
     object_frame = True
     if object_frame:
         # new_weight_path = f"/home/baothach/shape_servo_data/rotation_extension/single_physical_dvrk/all_objects_object_frame/weights/run1_w_rot_w_MP/epoch 160"
@@ -722,48 +672,53 @@ if __name__ == "__main__":
                 frame_count = 0
                 state = "generate preshape"
                 
-                
-
-            # elif frame_count == 6:
-            #     frame_count = 0
-            #     _,init_pose = get_pykdl_client(robot.get_arm_joint_positions())
-            #     init_eulers = transformations.euler_from_matrix(init_pose)
-            #     state = "get shape servo plan"
 
         if state == "generate preshape":                   
             rospy.loginfo("**Current state: " + state)
             # preshape_response = boxpcopy(preshape_response.palm_goal_pose_world[0].pose)        
             with torch.no_grad():
-                
+                print_color(f"Using MP method: {args.mp_method}", color="green")
                 ### Ground truth:
                 if args.mp_method == "ground_truth":
                     best_mp = gt_mp
 
                 ### Seg (Dense predictor):                
-                if args.mp_method == "dense_predictor":
-                    if object_category == "box_1k":   # something wrong dense predictor
-                        # rospy.logerr("Using gt mp")
-                        best_mp = gt_mp
-                    else:
-                        best_mp = get_mp_seg(seg_model=mp_seg_model, pc_init_numpy=init_pc_numpy, pc_initial_tensor=init_pc_tensor, pc_goal_tensor=goal_pc_tensor)
+                elif args.mp_method == "dense_predictor":
+                    # if object_category == "box_1k":   # something wrong dense predictor
+                    #     # rospy.logerr("Using gt mp")
+                    #     best_mp = gt_mp
+                    # else:
+                    # current_pc_numpy = down_sampling(get_partial_pointcloud_vectorized(*camera_args)) 
+                    current_pc_numpy = down_sampling(init_pc_numpy)                   
+                    temp_goal_pc_numpy = goal_pc_numpy - shift
 
+                    # Flip pc along y-axis
+                    current_pc_numpy[:,0] *= -1
+                    temp_goal_pc_numpy[:,0] *= -1
+                    current_pc_numpy[:,1] *= -1
+                    temp_goal_pc_numpy[:,1] *= -1
+                    
+                    world_to_object_H = world_to_object_frame_single(current_pc_numpy)
 
-                ### Keypoint method
-                if args.mp_method == "keypoint":
-                    if object_category == "box_1k":
-                        best_mp = get_mp_seg(seg_model=mp_seg_model, pc_init_numpy=init_pc_numpy, pc_initial_tensor=init_pc_tensor, pc_goal_tensor=goal_pc_tensor, \
-                                            compute_method="keypoint", num_kp_candidates=70, vis=False)                           
-                    else:
-                        if args.prim_name == "cylinder":
-                            best_mp = get_mp_seg(seg_model=mp_seg_model, pc_init_numpy=init_pc_numpy, pc_initial_tensor=init_pc_tensor, pc_goal_tensor=goal_pc_tensor, \
-                                                compute_method="keypoint", num_kp_candidates=70)                          
-                        else:
-                            best_mp = get_mp_seg(seg_model=mp_seg_model, pc_init_numpy=init_pc_numpy, pc_initial_tensor=init_pc_tensor, pc_goal_tensor=goal_pc_tensor, \
-                                                compute_method="keypoint", num_kp_candidates=100, vis=False)                
-                
-                ### classifier:
-                elif args.mp_method == "classifier":
-                    best_mp = get_mp_classifier(mp_classifier_model, init_pc_numpy, goal_pc_numpy, full_pc_numpy, vis=False, num_candidates=400, batch_size=128)
+                    transformed_current_pc_numpy = transform_point_cloud(current_pc_numpy, world_to_object_H)                  
+                    transformed_goal_pc_numpy = transform_point_cloud(temp_goal_pc_numpy, world_to_object_H)
+
+                    # transformed_current_pc_numpy[:,0] *= -1
+                    # transformed_goal_pc_numpy[:,0] *= -1
+                    # transformed_current_pc_numpy[:,1] *= -1
+                    # transformed_goal_pc_numpy[:,1] *= -1
+
+                    transformed_init_pc_tensor = torch.from_numpy(transformed_current_pc_numpy).permute(1,0).unsqueeze(0).float().to(device)
+                    transformed_pc_goal_tensor = torch.from_numpy(transformed_goal_pc_numpy).permute(1,0).unsqueeze(0).float().to(device)
+
+                    best_mp = get_mp_seg(seg_model=mp_seg_model, 
+                                        pc_init_numpy=transformed_current_pc_numpy, 
+                                        pc_goal_numpy=transformed_goal_pc_numpy,
+                                        pc_initial_tensor=transformed_init_pc_tensor, 
+                                        pc_goal_tensor=transformed_pc_goal_tensor,
+                                        vis=True)
+                    
+                    all_done = True
                     
 
             # target_pose = [-best_mp[0], -best_mp[1], best_mp[2] - ROBOT_Z_OFFSET, 0, 0.707107, 0.707107, 0]

@@ -344,7 +344,7 @@ if __name__ == "__main__":
     all_done = False
     state = "home"
     first_time = True
-    object_frame = True    
+    object_frame = False    
     print_color(f"Using object frame: {object_frame}", "green")
 
 
@@ -361,12 +361,13 @@ if __name__ == "__main__":
         
     if object_frame:
         # weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/all_objects_object_frame/weights/run1_w_rot_w_MP" 
-        weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/all_objects_object_frame_5_fix_direction/weights/run1_w_rot_w_MP" 
+        # weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/all_objects_object_frame_5_fix_direction/weights/run1_w_rot_w_MP"
+        weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/all_objects_object_frame_final/weights/run1_w_rot_w_MP" 
     else:
         weight_path = f"/home/baothach/shape_servo_data/rotation_extension/bimanual_physical_dvrk/all_objects/weights/run3_w_rot_w_MP"    
     model.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {200}")))    # 200
     model.eval()
-
+    # print_color("\n\n!!!!!meomeomeo!!!!\n\n")
 
 
 

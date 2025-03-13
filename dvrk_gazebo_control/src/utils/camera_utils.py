@@ -60,7 +60,8 @@ def compute_pointcloud(D_i, S_i, V_inv, P, w, h, min_z, segmentationId_dict, obj
     # filter out low points and get the remaining points
     points = P2.reshape(-1, 4)
     depths = D_i.reshape(-1)
-    mask = (depths >= -0.5)   #(depths >= -2) 
+    # mask = (depths >= -0.5)   #(depths >= -2)
+    mask = (depths >= -2) 
     points = points[mask, :]
     mask = (points[:, 2]>min_z)
     points = points[mask, :]

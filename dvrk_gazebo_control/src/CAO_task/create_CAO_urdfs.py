@@ -1,11 +1,11 @@
 import os
 import pickle
 
-
-urdf_path = "/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/single/multi_box_5kPa"
+stiffness = "1k"
+urdf_path = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_CAO/single/multi_box_{stiffness}Pa"
 os.makedirs(urdf_path,exist_ok=True)
 
-mesh_path = "/home/baothach/sim_data/Custom/Custom_mesh/physical_dvrk/multi_box_5kPa"
+mesh_path = f"/home/baothach/sim_data/Custom/Custom_mesh/physical_CAO/multi_box_{stiffness}Pa"
 mesh_relative_path = "/".join(mesh_path.split("/")[-3:])
 
 shape_name = "box"
@@ -15,16 +15,17 @@ density = 100
 poissons = 0.3
 scale = 1.0
 attach_dist = 0.01
+plate_thickness = 0.002
 
 
 with open(os.path.join(mesh_path, "primitive_dict_box.pickle"), 'rb') as handle:
     data = pickle.load(handle)
 
-for i in range(100):
+for i in range(1):    # 100
 
     object_name = shape_name + "_" + str(i)
-    height = data[object_name]["height"]
-    width = data[object_name]["width"]
+    height = data[object_name]["height"] / 2
+    width = data[object_name]["width"] / 2
     thickness = data[object_name]["thickness"]
     youngs = round(data[object_name]["youngs"])
 
@@ -36,7 +37,7 @@ for i in range(100):
     <robot name="{object_name}">
         <link name="{object_name}">    
             <fem>
-                <origin rpy="0.0 0.0 0.0" xyz="0 0 0" />
+                <origin rpy="0.0 0.0 0.0" xyz="0 0 {plate_thickness}" />
                 <density value="{density}" />
                 <youngs value="{youngs}"/>
                 <poissons value="{poissons}"/>
@@ -49,15 +50,15 @@ for i in range(100):
         
         <link name="fix_frame">
             <visual>
-                <origin xyz="{-height*scale/2. - 10.0:.3f} 0.0 0.0"/>              
+                <origin xyz="0.0 {0.0} {-thickness*scale/2 + plate_thickness/2:.3f}"/>              
                 <geometry>
-                    <box size="0.005 {width*scale:.3f} {thickness*scale:.3f}"/>
+                    <box size="{height*scale} {width*scale} {plate_thickness}"/>
                 </geometry>
             </visual>
             <collision>
-                <origin xyz="{-height*scale/2.:.3f} 0.0 0.0\"/>              
+                <origin xyz="0.0 {0.0} {-thickness*scale/2 + plate_thickness/2:.3f}"/>              
                 <geometry>
-                    <box size="0.005 {width*scale:.3f} {thickness*scale:.3f}"/>
+                    <box size="{height*scale} {width*scale} {plate_thickness}"/>
                 </geometry>
             </collision>
             <inertial>
@@ -78,4 +79,3 @@ for i in range(100):
     f.write(urdf_str)
     f.close()
 
-# <origin xyz="{-height*scale/2. - 10.0:.3f} 0.0 0.0"/>

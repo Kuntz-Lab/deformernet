@@ -178,42 +178,100 @@ def find_min_ang_vec(world_vec, cam_vecs):
 #     return homo_mat
 
 
-def world_to_object_frame_PCA(points, mp_pos_1):
+# def world_to_object_frame_PCA(points, mp_pos_1):
 
-    # Create a trimesh.Trimesh object from the point cloud
-    point_cloud = trimesh.points.PointCloud(points)
+#     # Create a trimesh.Trimesh object from the point cloud
+#     point_cloud = trimesh.points.PointCloud(points)
 
-    # Compute the oriented bounding box (OBB) of the point cloud
-    obb = point_cloud.bounding_box_oriented
+#     # Compute the oriented bounding box (OBB) of the point cloud
+#     obb = point_cloud.bounding_box_oriented
 
-    homo_mat = obb.primitive.transform
-    axes = obb.primitive.transform[:3,:3]   # x, y, z axes concat together
-    centroid = obb.primitive.transform[:3,3]
+#     homo_mat = obb.primitive.transform
+#     axes = obb.primitive.transform[:3,:3]   # x, y, z axes concat together
+#     centroid = obb.primitive.transform[:3,3]
 
-    # Find and align z axis
-    z_axis = [0., 0., 1.]
-    align_z_axis, min_ang_axis_idx = find_min_ang_vec(z_axis, axes)
-    axes = np.delete(axes, min_ang_axis_idx, axis=1)
+#     # Find and align z axis
+#     z_axis = [0., 0., 1.]
+#     align_z_axis, min_ang_axis_idx = find_min_ang_vec(z_axis, axes)
+#     axes = np.delete(axes, min_ang_axis_idx, axis=1)
 
-    # Find and align x axis.
-    # print("centroid.shape, mp_pos_1.shape:", centroid.shape, mp_pos_1.shape)
-    y_axis = mp_pos_1 - centroid
+#     # Find and align x axis.
+#     # print("centroid.shape, mp_pos_1.shape:", centroid.shape, mp_pos_1.shape)
+#     y_axis = mp_pos_1 - centroid
+#     y_axis = y_axis / np.linalg.norm(y_axis)
+#     align_y_axis, min_ang_axis_idx = find_min_ang_vec(y_axis, axes) 
+#     axes = np.delete(axes, min_ang_axis_idx, axis=1)
+
+#     # Find and align y axis
+#     align_x_axis = np.cross(align_y_axis, align_z_axis)
+
+#     R_o_w = np.column_stack((align_x_axis, align_y_axis, align_z_axis))
+    
+#     # Transpose to get rotation from world to object frame.
+#     R_w_o = np.transpose(R_o_w)
+#     d_w_o_o = np.dot(-R_w_o, homo_mat[:3,3])
+    
+#     homo_mat[:3,:3] = R_w_o
+#     homo_mat[:3,3] = d_w_o_o
+
+#     assert is_homogeneous_matrix(homo_mat)
+
+#     return homo_mat
+
+
+def world_to_object_frame_PCA(obj_cloud, mp_pos_1):
+    '''
+    For the given object cloud, build an object frame using PCA and aligning to the
+    world frame.
+    Returns a transformation from world frame to object frame.
+    '''
+
+    # Use PCA to find a starting object frame/centroid.
+    axes, centroid = find_pca_axes(obj_cloud)
+    axes = np.matrix(np.column_stack(axes))
+
+    # Rotation from object frame to frame.
+    R_o_w = np.eye(3)
+
+
+    #y axes
+    y_axis = mp_pos_1.flatten() - centroid.flatten()
     y_axis = y_axis / np.linalg.norm(y_axis)
     align_y_axis, min_ang_axis_idx = find_min_ang_vec(y_axis, axes) 
     axes = np.delete(axes, min_ang_axis_idx, axis=1)
+    # align_y_axis = axes[:, 1]
+    R_o_w[0, 1] = align_y_axis[0, 0]
+    R_o_w[1, 1] = align_y_axis[1, 0]
+    R_o_w[2, 1] = align_y_axis[2, 0]
 
-    # Find and align y axis
-    align_x_axis = np.cross(align_y_axis, align_z_axis)
-
-    R_o_w = np.column_stack((align_x_axis, align_y_axis, align_z_axis))
     
+    #Find and align x axes.
+    # x_axis = [1., 0., 0.]
+    # align_x_axis, min_ang_axis_idx = find_min_ang_vec(x_axis, axes) 
+    # axes = np.delete(axes, min_ang_axis_idx, axis=1)
+    align_x_axis = axes[:, 0]
+    R_o_w[0, 0] = align_x_axis[0, 0]
+    R_o_w[1, 0] = align_x_axis[1, 0]
+    R_o_w[2, 0] = align_x_axis[2, 0]
+
+
+    #z axes
+    # z_axis = [0., 0., 1.]
+    # align_z_axis, min_ang_axis_idx = find_min_ang_vec(z_axis, axes)
+    align_z_axis = axes[:, 1]
+    R_o_w[0, 2] = align_z_axis[0, 0]
+    R_o_w[1, 2] = align_z_axis[1, 0]
+    R_o_w[2, 2] = align_z_axis[2, 0]
+
     # Transpose to get rotation from world to object frame.
     R_w_o = np.transpose(R_o_w)
-    d_w_o_o = np.dot(-R_w_o, homo_mat[:3,3])
+    d_w_o_o = np.dot(-R_w_o, centroid)
     
-    homo_mat[:3,:3] = R_w_o
-    homo_mat[:3,3] = d_w_o_o
+    # Build full transformation matrix.
+    align_trans_matrix = np.eye(4)
+    align_trans_matrix[:3,:3] = R_w_o
+    align_trans_matrix[0,3] = d_w_o_o[0]
+    align_trans_matrix[1,3] = d_w_o_o[1]
+    align_trans_matrix[2,3] = d_w_o_o[2]    
 
-    assert is_homogeneous_matrix(homo_mat)
-
-    return homo_mat
+    return align_trans_matrix#, centroid
