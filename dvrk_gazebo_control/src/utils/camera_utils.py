@@ -54,14 +54,15 @@ def compute_pointcloud(D_i, S_i, V_inv, P, w, h, min_z, segmentationId_dict, obj
     X2 = X2.permute(1,2,0).unsqueeze(2) # shape = (h, w, 1, 4)
     V_inv = V_inv.unsqueeze(0).unsqueeze(0).expand(h, w, 4, 4) # shape = (h, w, 4, 4)
     # Inverse camera view to get world coordinates
-    P2 = torch.matmul(X2, V_inv) # shape = (h, w, 1, 4)
-    #print(P2.shape)
+    P2 = torch.matmul(X2, V_inv) # shape = (h, w, 1, 4))
+    # P2 = X2
+    # print("P2 shape:", P2.shape)
     
     # filter out low points and get the remaining points
     points = P2.reshape(-1, 4)
     depths = D_i.reshape(-1)
-    # mask = (depths >= -0.5)   #(depths >= -2)
-    mask = (depths >= -2) 
+    mask = (depths >= -0.5)   #(depths >= -2) MAIN LINE
+    # mask = (depths >= -2) 
     points = points[mask, :]
     mask = (points[:, 2]>min_z)
     points = points[mask, :]
@@ -80,6 +81,8 @@ def get_partial_pointcloud_vectorized(gym, sim, env, cam_handle, cam_prop, segme
     seg_buffer = gym.get_camera_image(sim, env, cam_handle, gymapi.IMAGE_SEGMENTATION)
     vinv = np.linalg.inv(np.matrix(gym.get_camera_view_matrix(sim, env, cam_handle)))
     proj = gym.get_camera_proj_matrix(sim, env, cam_handle)
+
+    # print("\n**camera_view_matrix:", np.matrix(gym.get_camera_view_matrix(sim, env, cam_handle)), end="\n")
 
     # compute pointcloud
     D_i = torch.tensor(depth_buffer.astype('float32') )

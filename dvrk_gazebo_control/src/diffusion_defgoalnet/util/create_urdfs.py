@@ -1,19 +1,20 @@
 import os
 import pickle
 
-main_path = "/home/baothach/shape_servo_data/diffusion_defgoalnet/object_data/retraction_cutting"
+main_path = "/home/baothach/shape_servo_data/diffusion_defgoalnet/object_data/retraction_tool"
 urdf_path = os.path.join(main_path, "urdf")
 os.makedirs(urdf_path,exist_ok=True)
+mesh_path = os.path.join(main_path, "mesh")
 
 density = 100
-youngs = "1e4"
+youngs = "1e3"
 poissons = 0.3
 scale = 1
 attach_dist = 0.01
 
-num_object_per_category = 50
+num_object_per_category = 100   #50
 
-categoies = ["ellipsoid", "cylinder"]
+categoies = ["cylinder"] #["ellipsoid", "cylinder"]
 
 for category in categoies:
     for object_idx in range(num_object_per_category):
@@ -22,8 +23,10 @@ for category in categoies:
         object_name = f"{category}_{object_idx}"
         base_name = f"{category}_{object_idx}_base" # 
 
-        # with open(os.path.join(mesh_path, object_name + ".pickle"), 'rb') as handle:
-        #     data = pickle.load(handle)
+        with open(os.path.join(mesh_path, f"{object_name}_info.pickle"), 'rb') as handle:
+            data = pickle.load(handle)
+            height = data["height"]
+            radius = data["radius"]
 
         cur_urdf_path = urdf_path + '/' + object_name + '.urdf'
         f = open(cur_urdf_path, 'w')
@@ -44,31 +47,31 @@ for category in categoies:
                 </fem>
             </link>
 
-            <link name="fix_frame">
-                <visual>
-                    <origin xyz="0.0 0.0 {0.0:.3f}"/>              
-                    <geometry>
-                        <mesh filename="../mesh/{base_name+".obj"}" scale="{scale} {scale} {scale}"/>
-                    </geometry>
-                </visual>
-                <collision>
-                    <origin xyz="0.0 0.0 {0.0}"/>           
-                    <geometry>
-                        <mesh filename="../mesh/{base_name+".obj"}" scale="{scale} {scale} {scale}"/>
-                    </geometry>
-                </collision>
-                <inertial>
-                    <mass value="500000"/>
-                    <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05"/>
-                </inertial>
-            </link>
-            
-            <joint name = "attach" type = "fixed">
-                <origin xyz = "0.0 0.0 0.0" rpy = "0 0 0"/>
-                <parent link ="{object_name}"/>
-                <child link = "fix_frame"/>
-            </joint>  
 
+        <link name="fix_frame">
+            <visual>
+                <origin xyz="10.0 {radius} {0}"/>              
+                <geometry>
+                    <box size="0.05 {0.005} {0.005}"/>
+                </geometry>
+            </visual>
+            <collision>
+                <origin xyz="0.0 {radius} {0}"/>              
+                <geometry>
+                    <box size="0.05 {0.005} {0.005}"/>
+                </geometry>
+            </collision>
+            <inertial>
+                <mass value="500000"/>
+                <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05"/>
+            </inertial>
+        </link>
+        
+        <joint name = "attach" type = "fixed">
+            <origin xyz = "0.0 0.0 0.0" rpy = "0 0 0"/>
+            <parent link = "{object_name}"/>
+            <child link = "fix_frame"/>
+        </joint>  
 
 
 
@@ -78,3 +81,27 @@ for category in categoies:
         f.write(urdf_str)
         f.close()
 
+            # <link name="fix_frame">
+            #     <visual>
+            #         <origin xyz="0.0 0.0 {-0.0025:.3f}"/>               
+            #         <geometry>
+            #             <box size="0.15 0.15 0.0025"/>
+            #         </geometry>
+            #     </visual>
+            #     <collision>
+            #         <origin xyz="0.0 0.0 {0.0}"/>             
+            #         <geometry>
+            #             <box size="0.15 0.15 0.0025"/>
+            #         </geometry>
+            #     </collision>
+            #     <inertial>
+            #         <mass value="500000"/>
+            #         <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05"/>
+            #     </inertial>
+            # </link>            
+
+            # <joint name = "attach" type = "fixed">
+            #     <origin xyz = "0.0 0.0 0.0" rpy = "0 0 0"/>
+            #     <parent link ="{object_name}"/>
+            #     <child link = "fix_frame"/>
+            # </joint>  

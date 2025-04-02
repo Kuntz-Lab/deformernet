@@ -34,6 +34,8 @@ from core import Robot
 from behaviors import MoveToPose, TaskVelocityControl2
 import transformations
 
+sys.path.append(pkg_path + '/src/object_packaging')
+from util.object_packaging_utils import compute_balls_new_positions
 
 ROBOT_Z_OFFSET = 0.25
 # angle_kuka_2 = -0.4
@@ -87,7 +89,7 @@ if __name__ == "__main__":
     sim_params = gymapi.SimParams()
     sim_params.up_axis = gymapi.UP_AXIS_Z
     sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
-    # sim_params.gravity = gymapi.Vec3(0.0, 0.0, 0.)
+    # sim_params.gravity = gymapi.Vec3(0.0, 0.0, 0)
     if sim_type is gymapi.SIM_FLEX:
         sim_params.substeps = 4
         # print("=================sim_params.dt:", sim_params.dt)
@@ -170,7 +172,7 @@ if __name__ == "__main__":
     # soft_asset_file = f"dog_1.urdf"
 
     if args.prim_name == "box":
-        asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa"
+        asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/physical_dvrk/bimanual/multi_{object_category}Pa_ball"
         soft_asset_file = args.obj_name + ".urdf"   
     elif args.prim_name == "cylinder":
         asset_root = f"/home/baothach/sim_data/Custom/Custom_urdf/bimanual_multi_{object_category}Pa" 
@@ -207,12 +209,11 @@ if __name__ == "__main__":
     amazon_box_scale = 1.5
     
     rigid_pose = gymapi.Transform()
-    # # rigid_pose.p = gymapi.Vec3(0.2, -two_robot_offset/2 - 0.1, 0.00) 
-    # # rigid_pose.p = gymapi.Vec3(w / 2 + 0.1*amazon_box_scale/2 + 0.05, -two_robot_offset/2, 0.00) 
-    # rigid_pose.p = gymapi.Vec3(0.25, -two_robot_offset/2, 0.00) 
+    # rigid_pose.p = gymapi.Vec3(0.3, -two_robot_offset/2 - 0.1, 0.00) 
+    # rigid_pose.p = gymapi.Vec3(w / 2 + 0.1*amazon_box_scale/2 + 0.05, -two_robot_offset/2, 0.00) 
     
     object_span = w/2 if args.prim_name == "box" else r
-    # # box_x = np.random.uniform(0.2, 0.3) * np.random.choice([-1, 1])
+    # box_x = np.random.uniform(0.2, 0.3) * np.random.choice([-1, 1])
     box_x = np.random.uniform(object_span + 0.1*amazon_box_scale/2 + 0.05, 0.3) * np.random.choice([-1, 1])
     box_y = np.random.uniform(-0.1, 0.1)
     rigid_pose.p = gymapi.Vec3(box_x, box_y-two_robot_offset/2, 0.00)
@@ -270,6 +271,8 @@ if __name__ == "__main__":
         
         soft_actor = gym.create_actor(env_obj, soft_asset, soft_pose, "soft", i, 0)
         object_handles.append(soft_actor)
+        color = gymapi.Vec3(0,1,0)
+        gym.set_rigid_body_color(env, soft_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
         kuka_handles.append(kuka_handle)
         kuka_handles_2.append(kuka_2_handle)
@@ -342,7 +345,7 @@ if __name__ == "__main__":
     state = "home"
     
     
-    data_recording_path = f"/home/baothach/shape_servo_data/diffusion_defgoalnet/object_packaging_multimodal/multi_{object_category}Pa/data"
+    data_recording_path = f"/home/baothach/shape_servo_data/diffusion_defgoalnet/object_packaging/multi_{object_category}Pa/eval_data"
 
  
     os.makedirs(data_recording_path, exist_ok=True)
@@ -373,14 +376,6 @@ if __name__ == "__main__":
     action_count = 0
     all_recorded_pcs = []
     all_recorded_full_pcs = []
-    global_all_recorded_pcs = []
-    global_all_recorded_full_pcs = []
-    goal_count = 0
-    max_goal_count = 5
-    action_length = 4
-    reset_count = 0
-    max_reset_count = 10
-    assert data_point_count % max_goal_count == 0, "data_point_count % max_goal_count must be 0"
     
 
     dc_client = GraspDataCollectionClient()
@@ -400,10 +395,7 @@ if __name__ == "__main__":
 
     robot_2 = Robot(gym, sim, envs[0], kuka_handles_2[0])
     robot_1 = Robot(gym, sim, envs[0], kuka_handles[0])
-
-    def set_dof_properties():
-        gym.set_actor_dof_properties(robot_1.env_handle, robot_1.robot_handle, dof_props_2)
-        gym.set_actor_dof_properties(robot_2.env_handle, robot_2.robot_handle, dof_props_2)
+    temp_count = 0
 
     while (not close_viewer) and (not all_done): 
 
@@ -419,8 +411,8 @@ if __name__ == "__main__":
 
         if state == "home" :   
             frame_count += 1
-            gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka", "psm_main_insertion_joint"), 0.24)
-            gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka2", "psm_main_insertion_joint"), 0.24)            
+            gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka", "psm_main_insertion_joint"), 0.1)
+            gym.set_joint_target_position(envs[0], gym.get_joint_handle(envs[0], "kuka2", "psm_main_insertion_joint"), 0.1)            
 
             if visualization:
                 if frame_count == 5:                
@@ -446,13 +438,50 @@ if __name__ == "__main__":
                     pc_ros_msg = dc_client.seg_obj_from_file_client(pcd_file_path = "/home/baothach/shape_servo_data/multi_grasps/1.pcd", align_obj_frame = False).obj
                     pc_ros_msg = fix_object_frame(pc_ros_msg)
 
+                    # Move the balls           
+                    print("\n\n*** object_handles:", object_handles, "\n\n")   
+                      
+                    frame_state = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_POS)  
+                    # print("frame_state:", frame_state)               
+                    # frame_state['pose']['p']['z'][0] += 0.1   
+                    # print("frame_state:", frame_state)
+                    # print("\n\n------------------\n\n")
+                    # print("frame_state['pose']['p']:", frame_state['pose']['p'][0])
+                    # # frame_state['pose']['p']['y'] += 0.15             
+                    # gym.set_actor_rigid_body_states(envs[i], object_handles[i], frame_state, gymapi.STATE_ALL) 
+                    desired_delta_pos_1 = np.array([0.0, 0.0, 0.1])
+                    desired_delta_pos_2 = np.array([0.1, 0.0, 0.05])
+                    ball_frame_count = 0
                    
-                state = "generate preshape"                
+                state = "generate preshape meow"                
                 frame_count = 0    
-                
-                shift = np.array([0.0, -soft_pose.p.y, camera_args[-3]])    # shift object to centroid 
-                pc_rigid = get_partial_pointcloud_vectorized(*rigid_camera_args) + shift
 
+                shift = np.array([0.0, -soft_pose.p.y, camera_args[-3]])    # shift object to centroid 
+        if state == "generate preshape meow":
+            # temp_count += 1
+            # # frame_state = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_POS)  
+            # # print("frame_state:", frame_state)               
+            # frame_state['pose']['p']['y'][0] += 0.001 * temp_count  
+            # # frame_state['pose']['p']['y'][1] -= 0.001 * temp_count 
+            # gym.set_actor_rigid_body_states(envs[i], object_handles[i], frame_state, gymapi.STATE_ALL)
+
+            new_delta_pos_1, new_delta_pos_2 = compute_balls_new_positions(desired_delta_pos_1, desired_delta_pos_2, 
+                                                                     ball_frame_count, delta_pos_per_frame=0.001)
+            ball_frame_count += 1
+
+            if new_delta_pos_1 is not None:
+                frame_state['pose']['p']['x'][0] += new_delta_pos_1[0]
+                frame_state['pose']['p']['y'][0] += new_delta_pos_1[1]
+                frame_state['pose']['p']['z'][0] += new_delta_pos_1[2]
+            if new_delta_pos_2 is not None:
+                frame_state['pose']['p']['x'][1] += new_delta_pos_2[0]
+                frame_state['pose']['p']['y'][1] += new_delta_pos_2[1]
+                frame_state['pose']['p']['z'][1] += new_delta_pos_2[2]
+
+            gym.set_actor_rigid_body_states(envs[i], object_handles[i], frame_state, gymapi.STATE_ALL)
+
+            if new_delta_pos_1 is None and new_delta_pos_2 is None:
+                state = "grasp object"
 
         if state == "generate preshape":                   
             rospy.loginfo("**Current state: " + state)
@@ -535,11 +564,6 @@ if __name__ == "__main__":
                 gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka", "psm_tool_gripper2_joint"), g_2_pos)                     
                 gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka2", "psm_tool_gripper1_joint"), g_1_pos)
                 gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka2", "psm_tool_gripper2_joint"), g_2_pos)         
-
-                gym.refresh_particle_state_tensor(sim)
-                saved_object_contact_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
-                saved_robot_state_2 = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
-                saved_robot_state_1 = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles[i], gymapi.STATE_ALL))
         
                 _,init_pose_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
                 init_eulers_1 = transformations.euler_from_matrix(init_pose_1)
@@ -550,7 +574,6 @@ if __name__ == "__main__":
                 dof_props_2['driveMode'][:8].fill(gymapi.DOF_MODE_VEL)
                 dof_props_2["stiffness"][:8].fill(0.0)
                 dof_props_2["damping"][:8].fill(200.0)
-                # dof_props_2["damping"][:8].fill(1000.0)
                 gym.set_actor_dof_properties(robot_1.env_handle, robot_1.robot_handle, dof_props_2)
                 gym.set_actor_dof_properties(robot_2.env_handle, robot_2.robot_handle, dof_props_2)
 
@@ -558,64 +581,34 @@ if __name__ == "__main__":
             rospy.loginfo("**Current state: " + state) 
 
             if action_count == 0:
-                obj_angle = np.random.uniform(-np.pi/2, np.pi/2)
-            print_color(f"Object angle: {obj_angle}", "green")
-            
-            # side_angle = 0*-np.pi/2
-            if action_count == 0:
-                # delta_x_1, delta_y_1, delta_z_1 = (0, 0.00, 0.15)
-                # delta_x_2, delta_y_2, delta_z_2 = (0, 0.00, 0.15)
-                delta_x_1, delta_y_1, delta_z_1 = (0, 0.00, 0.17)
-                delta_x_2, delta_y_2, delta_z_2 = (0, 0.00, 0.17)
+                delta_x_1, delta_y_1, delta_z_1 = (0, 0.00, 0.15)
+                delta_x_2, delta_y_2, delta_z_2 = (0, 0.00, 0.15)
             elif action_count == 1:
-                dof_props_2["damping"][:8].fill(200.0)
-                set_dof_properties()                
                 y_displacement = rigid_pose.p.y + two_robot_offset/2
                 delta_x_1, delta_y_1, delta_z_1 = (rigid_pose.p.x, y_displacement, 0)
                 delta_x_2, delta_y_2, delta_z_2 = (-rigid_pose.p.x, -y_displacement, 0)                
-            
-            elif action_count == 2:    
-                eef1_to_eef2_y = abs(robot_1.get_ee_cartesian_position()[1] - robot_2.get_ee_cartesian_position()[1])
-                print_color(f"\n\n============= PIKA PIKA =============\n\n", "yellow")
-                print("eef1_to_eef2_y:", eef1_to_eef2_y)
-
-
-                delta_x_1 = eef1_to_eef2_y/2 * np.sin(obj_angle)
-                delta_y_1 = (eef1_to_eef2_y/2 - eef1_to_eef2_y/2 * np.cos(obj_angle))
-                delta_z_1 = 0
-                delta_x_2 = eef1_to_eef2_y/2 * np.sin(obj_angle)
-                delta_y_2 = (eef1_to_eef2_y/2 - eef1_to_eef2_y/2 * np.cos(obj_angle))
-                delta_z_2 = 0
-                
-
-            elif action_count == 3:               
+            elif action_count == 2:
+                # delta_x_1, delta_y_1, delta_z_1 = (0, 0.04, -0.1)
+                # delta_x_2, delta_y_2, delta_z_2 = (0, 0.04, -0.1)
                 box_size = 0.1 * amazon_box_scale
                 if h > box_size:
                     y_displacement = min((h - box_size) * 0.5 + 0.03, h * 0.5 - 0.01)   
                     print("box size, h, y_displacement:", box_size, h, y_displacement)            
    
                 else:
-                    y_displacement = 0.03   # 0.03         
-                rotated_y_dis = y_displacement * np.cos(obj_angle)
-                rotated_x_dis = y_displacement * np.sin(obj_angle)
-                delta_x_1, delta_y_1, delta_z_1 = (-rotated_x_dis, rotated_y_dis, -0.14)
-                delta_x_2, delta_y_2, delta_z_2 = (-rotated_x_dis, rotated_y_dis, -0.14)
+                    y_displacement = 0.03           
+                delta_x_1, delta_y_1, delta_z_1 = (0, y_displacement, -0.1)
+                delta_x_2, delta_y_2, delta_z_2 = (0, y_displacement, -0.1)
             else:
                 all_done = True
-                 
 
-            if action_count == 2: 
-                delta_alpha_1, delta_beta_1, delta_gamma_1 = 1e-6, 1e-6, obj_angle
-                delta_alpha_2, delta_beta_2, delta_gamma_2 = 1e-6, 1e-6, obj_angle
-            else:                 
-                delta_alpha_1, delta_beta_1, delta_gamma_1 = 1e-6, 1e-6, 1e-6
-                delta_alpha_2, delta_beta_2, delta_gamma_2 = 1e-6, 1e-6, 1e-6
-                                
+            action_count += 1
+                             
+            delta_alpha_1, delta_beta_1, delta_gamma_1 = 1e-6, 1e-6, 1e-6
+            delta_alpha_2, delta_beta_2, delta_gamma_2 = 1e-6, 1e-6, 1e-6
+
             print(f"Robot 1 xyz: {delta_x_1:.2f}, {delta_y_1:.2f}, {delta_z_1:.2f}")
             print(f"Robot 2 xyz: {delta_x_2:.2f}, {delta_y_2:.2f}, {delta_z_2:.2f}")
-            print("action_count:", action_count)
-            
-            action_count += 1
 
 
             x_1 = delta_x_1 + init_pose_1[0,3]
@@ -641,19 +634,11 @@ if __name__ == "__main__":
 
 
         if state == "move to goal":
-            main_ins_pos_1 = gym.get_joint_position(envs[0], gym.get_joint_handle(envs[0], "kuka", "psm_main_insertion_joint"))
-            main_ins_pos_2 = gym.get_joint_position(envs[0], gym.get_joint_handle(envs[0], "kuka2", "psm_main_insertion_joint"))
-            contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
-            if main_ins_pos_1 <= 0.042 or main_ins_pos_2 <= 0.042 or (not(20 in contacts or 21 in contacts) or not(9 in contacts or 10 in contacts)):  # lose contact w 1 robot
-                rospy.logerr("Exeeded joint limits")
-                state = "reset"
-                # all_done = True
 
-            contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
-            if (not(20 in contacts or 21 in contacts) or not(9 in contacts or 10 in contacts)):  # lose contact w either robot 2 or robot 1    
-                rospy.logerr("Lost contact with robot")
-                state = "reset"
-                # all_done = True
+            # contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
+            # if (not(20 in contacts or 21 in contacts) or not(9 in contacts or 10 in contacts)):  # lose contact w either robot 2 or robot 1    
+            #     rospy.logerr("Lost contact with robot")
+            #     all_done = True
 
             if True:
 
@@ -663,16 +648,8 @@ if __name__ == "__main__":
                 action_2 = tvc_behavior_2.get_action() 
                 # print("action_1, action_2:", action_1, action_2)
                 if (action_1 is not None) and (action_2 is not None) and gym.get_sim_time(sim) - closed_loop_start_time <= 1.5: 
-                    # if action_count == 2:
-                    #     scaled_action_1 = action_1.get_joint_position()
-                    #     scaled_action_2 = action_2.get_joint_position()
-                    # else:
-                    scaled_action_1 = action_1.get_joint_position() * 4
-                    scaled_action_2 = action_2.get_joint_position() * 4
-                    gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, scaled_action_1)
-                    gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, scaled_action_2)
-                    # gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position() * 4)
-                    # gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position() * 4)
+                    gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, action_1.get_joint_position() * 4)
+                    gym.set_actor_dof_velocity_targets(robot_2.env_handle, robot_2.robot_handle, action_2.get_joint_position() * 4)
 
                 else:   
 
@@ -693,25 +670,11 @@ if __name__ == "__main__":
                     pc_deformable = get_partial_pointcloud_vectorized(*camera_args) + shift 
                     full_pc_deformable = get_object_particle_state(gym, sim) + shift
                     all_recorded_pcs.append(pc_deformable)
-                    all_recorded_full_pcs.append(full_pc_deformable)                         
-
-                    frame_count = 0
-                    state = "get shape servo plan"
-                    _,init_pose_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
-                    init_eulers_1 = transformations.euler_from_matrix(init_pose_1)
-
-                    _,init_pose_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
-                    init_eulers_2 = transformations.euler_from_matrix(init_pose_2)
-
-                    if len(all_recorded_pcs) == action_length:
+                    all_recorded_full_pcs.append(full_pc_deformable)
+                    
+                    if len(all_recorded_pcs) == 3:
                         assert len(all_recorded_pcs) == len(all_recorded_full_pcs)
-                        
-                        global_all_recorded_pcs.append(deepcopy(all_recorded_pcs))
-                        global_all_recorded_full_pcs.append(deepcopy(all_recorded_full_pcs)) 
-
-                        goal_count += 1
-                        # data_point_count += 1 
-                        state = "reset"
+                        pc_rigid = get_partial_pointcloud_vectorized(*rigid_camera_args) + shift 
                         
                         if visualization:
                             rigid_pcd = pcd_ize(pc_rigid)
@@ -720,52 +683,29 @@ if __name__ == "__main__":
                                 deformable_pcds.append(pcd_ize(all_recorded_pcs[i]))
                             open3d.visualization.draw_geometries(deformable_pcds + [rigid_pcd])
                                 
-                        # if len(global_all_recorded_pcs) == max_goal_count:
-                        #     assert len(global_all_recorded_pcs) == len(global_all_recorded_full_pcs) 
-                            
-                        #     for idx, (all_recorded_pcs, all_recorded_full_pcs) in enumerate(zip(global_all_recorded_pcs, global_all_recorded_full_pcs)):
-                        #         data = {"all_recorded_pcs": all_recorded_pcs, "all_recorded_full_pcs": all_recorded_full_pcs,
-                        #                 "pc_rigid": pc_rigid, "obj_name": args.obj_name, "obj_angle": obj_angle,
-                        #                 "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
-                        #         data_path = f"{data_recording_path}/sample_{data_point_count // max_goal_count}_goal_{idx}.pickle"
-                        #         write_pickle_data(data, data_path)       
-                        #         # all_done = True 
-                        #         print_color(f"\n*** Total data point count: {len(os.listdir(data_recording_path))}\n")
+                        
+                        # data = {"all_recorded_pcs": all_recorded_pcs, "all_recorded_full_pcs": all_recorded_full_pcs,
+                        #         "pc_rigid": pc_rigid, "obj_name": args.obj_name,
+                        #         "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
+                        # write_pickle_data(data, f"{data_recording_path}/sample {data_point_count}.pickle")       
+                        # print_color(f"\n*** Total data point count: {len(os.listdir(data_recording_path))}\n")
+                        # data_point_count += 1     
+                        # all_done = True  
 
+                    frame_count = 0
+                    state = "get shape servo plan"
+                    _,init_pose_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
+                    init_eulers_1 = transformations.euler_from_matrix(init_pose_1)
 
+                    _,init_pose_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
+                    init_eulers_2 = transformations.euler_from_matrix(init_pose_2)
+             
         if state == "reset":   
-            rospy.logerr("**Current state: " + state)
-            frame_count = 0
-            sample_count = 0
-            terminate_count = 0
-            action_count = 0
-            reset_count += 1
-            
-            if len(all_recorded_pcs) == action_length:
-                # len(all_recorded_pcs) != action_count means failure due to losing contact or exceeding joint limits.
-                assert len(all_recorded_pcs) == len(all_recorded_full_pcs)
-                all_recorded_pcs = []
-                all_recorded_full_pcs = []   
-                                                
-            gym.set_actor_rigid_body_states(envs[i], kuka_handles[i], saved_robot_state_1, gymapi.STATE_ALL) 
-            gym.set_actor_rigid_body_states(envs[i], kuka_handles_2[i], saved_robot_state_2, gymapi.STATE_ALL) 
-            gym.set_particle_state_tensor(sim, gymtorch.unwrap_tensor(saved_object_contact_state))
-
-            _,init_pose_1 = get_pykdl_client(robot_1.get_arm_joint_positions())
-            init_eulers_1 = transformations.euler_from_matrix(init_pose_1)
-
-            _,init_pose_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
-            init_eulers_2 = transformations.euler_from_matrix(init_pose_2)
-            
-            state = "get shape servo plan"
-            
-
-        if goal_count >= max_goal_count or reset_count >= max_reset_count:
             all_done = True
 
-        # if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:  
-        #     print_color(f"Done collecting data for {args.obj_name}")                  
-        #     all_done = True 
+        if  data_point_count >= max_data_point_count or data_point_count >= max_data_point_per_variation:  
+            print_color(f"Done collecting data for {args.obj_name}")                  
+            all_done = True 
 
         # step rendering
         gym.step_graphics(sim)

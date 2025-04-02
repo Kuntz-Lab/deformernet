@@ -673,13 +673,13 @@ if __name__ == "__main__":
                             open3d.visualization.draw_geometries(deformable_pcds + [rigid_pcd])
                                 
                         
-                        data = {"all_recorded_pcs": all_recorded_pcs, "all_recorded_full_pcs": all_recorded_full_pcs,
-                                "pc_rigid": pc_rigid, "obj_name": args.obj_name,
-                                "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
-                        write_pickle_data(data, f"{data_recording_path}/sample {data_point_count}.pickle")       
-                        print_color(f"\n*** Total data point count: {len(os.listdir(data_recording_path))}\n")
-                        data_point_count += 1     
-                        all_done = True  
+                        # data = {"all_recorded_pcs": all_recorded_pcs, "all_recorded_full_pcs": all_recorded_full_pcs,
+                        #         "pc_rigid": pc_rigid, "obj_name": args.obj_name,
+                        #         "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
+                        # write_pickle_data(data, f"{data_recording_path}/sample {data_point_count}.pickle")       
+                        # print_color(f"\n*** Total data point count: {len(os.listdir(data_recording_path))}\n")
+                        # data_point_count += 1     
+                        # all_done = True  
 
                     frame_count = 0
                     state = "get shape servo plan"

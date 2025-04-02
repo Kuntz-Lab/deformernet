@@ -34,7 +34,7 @@ import transformations
 import trimesh
 sys.path.append("../")
 sys.path.append(pkg_path + '/src/diffusion_defgoalnet')
-from util.retraction_tool_utils import get_random_tool_pose, random_boolean_mask, sample_cylindrical_point
+from util.retraction_tool_utils import get_random_tool_pose, random_boolean_mask
 from diffusion_defgoalnet.util.retraction_cutting_utils import get_eef_position
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
 from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data
@@ -124,9 +124,8 @@ if __name__ == "__main__":
         # obj_height = data["height"] #data["height"]  data["radius"]*2
         if "height" in data:
             obj_height = data["height"]
-            radius = data["radius"]
-        # elif "radius" in data:
-        #     obj_height = data["radius"]*2
+        elif "radius" in data:
+            obj_height = data["radius"]*2
         SCALE_RATIO = obj_height / 0.1
             
 
@@ -196,7 +195,7 @@ if __name__ == "__main__":
     # random_tool_pose = get_random_tool_pose(quadrant=1, translation=0.05, return_format="quaternion")
 
     rigid_asset_root = os.path.join(main_path, "object_data/retraction_tool/urdf_tool")
-    rigid_asset_file = f"tool_1.urdf"   #f"tool_0.urdf"
+    rigid_asset_file = f"tool_0.urdf"
     # rigid_pose = gymapi.Transform()
     # rigid_pose.p = gymapi.Vec3(random_tool_pose[0], soft_pose.p.y + random_tool_pose[1], random_tool_pose[2])
     # rigid_pose.r = gymapi.Quat(*list(random_tool_pose[3:]))    
@@ -248,64 +247,28 @@ if __name__ == "__main__":
         object_handles.append(soft_actor)
 
         # add rigid obj
+        # rigid_actor = gym.create_actor(env, rigid_asset, rigid_pose, 'rigid', i, 1, segmentationId=12)
         color = gymapi.Vec3(1,0,0)
+        # gym.set_rigid_body_color(env, rigid_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
-        # # Create random boolean mask whether a tool will show up or not
-        # tool_mask = np.array([1,0,0,0])
-        # empty_quandrant = np.where(tool_mask == 0)[0]
-        # print("\n\n===== PIKA PIKA =====")
-        # print(f"Number of tools: {np.sum(tool_mask)}")
-        # for j in range(4):
-        #     if j in empty_quandrant:
-        #         continue
-        #     random_tool_pose = get_random_tool_pose(quadrant=j+1, translation=max(0.05, 0.05 * SCALE_RATIO), return_format="quaternion")
-        #     # print("\n\n===== PIKA PIKA =====")
-        #     # print(f"random_tool_pose: {random_tool_pose}")
-        #     rigid_pose = gymapi.Transform()
-        #     # rigid_pose.p = gymapi.Vec3(random_tool_pose[0], soft_pose.p.y + random_tool_pose[1], random_tool_pose[2])
-        #     # rigid_pose.r = gymapi.Quat(*list(random_tool_pose[3:]))
-
-        #     rigid_pose.p = gymapi.Vec3(0, soft_pose.p.y + 0.03, 0.03)
-        #     rigid_pose.r = gymapi.Quat(*list(random_tool_pose[3:]))   
-        #     # print("random_tool_pose:", random_tool_pose)
-        #     # rigid_pose.r = gymapi.Quat(0.0, 0.0, 0, 1)        
-             
-        #     rigid_actor = gym.create_actor(env, rigid_asset, rigid_pose, f'tool_{j}', i, 1, segmentationId=12+j)
-        #     gym.set_rigid_body_color(env, rigid_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
-
-        area_idx = np.random.randint(0, 3)   
-        r_min, r_max = radius + 0.01, radius + 0.03    #0.03, 0.05
-        if area_idx == 0:
-            theta_min, theta_max = np.pi/6, np.pi/3
-        elif area_idx == 1:
-            theta_min, theta_max = np.pi/2 - np.pi/12, np.pi/2 + np.pi/12
-        elif area_idx == 2:
-            theta_min, theta_max = np.pi - np.pi/3, np.pi - np.pi/6
-        
-        # theta_min, theta_max = np.pi/1, np.pi/1
-             
-        z_min, z_max = 0, obj_height * 0.7
-
-        # Sample points
-        translation_vector = sample_cylindrical_point(r_min, r_max, theta_min, theta_max, z_min, z_max) 
-        # translation_vector[1] += soft_pose.p.y    
-
-
-        random_tool_pose = get_random_tool_pose(area_idx, translation_vector, return_format="quaternion")
+        # Create random boolean mask whether a tool will show up or not
+        # tool_mask = np.random.choice([0, 1], size=4, p=[0.5, 0.5])
+        # # tool_mask = np.array([1,1,0,0])
+        tool_mask = random_boolean_mask()
+        empty_quandrant = np.where(tool_mask == 0)[0]
         print("\n\n===== PIKA PIKA =====")
-        print(f"random_tool_pose: {random_tool_pose}")
-        print_color(f"area_idx: {area_idx}", color="green")
-        rigid_pose = gymapi.Transform()
-        rigid_pose.p = gymapi.Vec3(random_tool_pose[0], random_tool_pose[1] + soft_pose.p.y, random_tool_pose[2])
-        rigid_pose.r = gymapi.Quat(*list(random_tool_pose[3:]))
-
-        # rigid_pose.p = gymapi.Vec3(0, soft_pose.p.y + 0.03, 0.03)
-        # rigid_pose.r = gymapi.Quat(*list(random_tool_pose[3:]))   
-        # print("random_tool_pose:", random_tool_pose)
-        # rigid_pose.r = gymapi.Quat(0.0, 0.0, 0, 1)        
-            
-        rigid_actor = gym.create_actor(env, rigid_asset, rigid_pose, f'tool', i, 1, segmentationId=12)
-        gym.set_rigid_body_color(env, rigid_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+        print(f"Number of tools: {np.sum(tool_mask)}")
+        for j in range(4):
+            if j in empty_quandrant:
+                continue
+            random_tool_pose = get_random_tool_pose(quadrant=j+1, translation=max(0.05, 0.05 * SCALE_RATIO), return_format="quaternion")
+            # print("\n\n===== PIKA PIKA =====")
+            # print(f"random_tool_pose: {random_tool_pose}")
+            rigid_pose = gymapi.Transform()
+            rigid_pose.p = gymapi.Vec3(random_tool_pose[0], soft_pose.p.y + random_tool_pose[1], random_tool_pose[2])
+            rigid_pose.r = gymapi.Quat(*list(random_tool_pose[3:])) 
+            rigid_actor = gym.create_actor(env, rigid_asset, rigid_pose, f'tool_{j}', i, 1, segmentationId=12+j)
+            gym.set_rigid_body_color(env, rigid_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
         # object_handles.append(soft_actor)
 
@@ -326,9 +289,11 @@ if __name__ == "__main__":
 
     # Camera setup
     if not args.headless:
+        # cam_pos = gymapi.Vec3(1, 0.5, 1)
         cam_pos = gymapi.Vec3(0.3, -0.7, 0.3)
-        # cam_pos = gymapi.Vec3(0.3, -0.2, 0.3)
-
+        # cam_pos = gymapi.Vec3(0.3, -0.1, 0.5)  # final setup for thin layer tissue
+        # cam_pos = gymapi.Vec3(0.5, -0.36, 0.3)
+        # cam_target = gymapi.Vec3(0.0, 0.0, 0.1)
         cam_target = gymapi.Vec3(0.0, -0.36, 0.1)
         middle_env = envs[num_envs // 2 + num_per_row // 2]
         gym.viewer_camera_look_at(viewer, middle_env, cam_pos, cam_target)
@@ -342,7 +307,7 @@ if __name__ == "__main__":
     cam_props = gymapi.CameraProperties()
     cam_props.width = cam_width
     cam_props.height = cam_height
-    cam_positions.append(gymapi.Vec3(0.0, soft_pose.p.y - 0.1, 0.1))   # put camera in front of the object
+    cam_positions.append(gymapi.Vec3(0.0, soft_pose.p.y - 0.2, 0.2))   # put camera in front of the object
     cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
   
     # cam_positions.append(gymapi.Vec3(0.15, soft_pose.p.y, 0.1))   # put camera on the side of object
@@ -371,7 +336,7 @@ if __name__ == "__main__":
     state = "home"
     
 
-    data_recording_path = os.path.join(main_path, "data/retraction_tool_3")
+    data_recording_path = os.path.join(main_path, "data/retraction_tool_2")
     os.makedirs(data_recording_path, exist_ok=True)
     
         
@@ -394,15 +359,15 @@ if __name__ == "__main__":
     save_intial_pc = True
     angle_idx = 0
     recorded_goal_pcs = []
-    segmentationId_dict = {"robot": 11, "tool": 12}
+    segmentationId_dict = {"robot": 11, "tool_0": 12, "tool_1": 13, "tool_2": 14, "tool_3": 15}
     visualization = False
 
     dc_client = GraspDataCollectionClient()
     
     camera_args = [gym, sim, envs_obj[0], cam_handles[0], cam_props, 
-                    segmentationId_dict, "deformable", None, 0.004, False, "cpu"]
+                    segmentationId_dict, "deformable", None, 0.002, False, "cpu"]
     camera_tool_args = [gym, sim, envs_obj[0], cam_handles[0], cam_props,
-                        segmentationId_dict, "tool", None, 0.004, False, "cpu"]
+                        segmentationId_dict, None, None, 0.002, False, "cpu"]
 
     
     start_time = timeit.default_timer()    
@@ -443,13 +408,16 @@ if __name__ == "__main__":
                     saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
                     saved_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
 
-                    tool_pc = get_partial_pointcloud_vectorized(*camera_tool_args)
-
-                    partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
-                    print("partial_goal_pc shape:", partial_goal_pc.shape)
-                    temp_pcd = pcd_ize(partial_goal_pc, vis=False)
-                    coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1) 
-                    open3d.visualization.draw_geometries([temp_pcd, coor])
+                    # max_z_idx = np.argmax(saved_object_state[:,2])
+                    # max_z_pt = saved_object_state[max_z_idx]
+                    tool_pcs = []
+                    pcds = []
+                    for j in range(4):
+                        if tool_mask[j] == 1:
+                            camera_tool_args[-5] = f"tool_{j}"
+                            tool_pcs.append(get_partial_pointcloud_vectorized(*camera_tool_args))
+                    #         pcds.append(pcd_ize(tool_pcs[j]))
+                    # open3d.visualization.draw_geometries(pcds)
 
 
                     first_time = False
@@ -539,32 +507,32 @@ if __name__ == "__main__":
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state) 
 
-            print_color(f"angle_idx: {angle_idx}", color="red")
-
 
             delta_alpha, delta_beta, delta_gamma = 1e-6, 1e-6, 1e-6   
 
-            # delta = -0.06 * SCALE_RATIO
-            delta = -0.08 * SCALE_RATIO
+            # delta_x = np.random.uniform(low = -max_x, high = max_x)
+            # delta_y = np.random.uniform(low = 0.0, high = max_y)
+            # delta_z = np.random.uniform(low = 0.03, high = max_z)    
 
+            # delta_x, delta_y, delta_z = 0.05, 0.05, 0.0
 
-            magnitude = np.sqrt(delta**2 * 2)
-            if area_idx == 0:
-                # retract_angle = np.random.choice([np.pi/6, np.pi/4])
-                options = [np.pi/6, np.pi/3]
-                retract_angle = options[angle_idx]
-                delta_x, delta_y = magnitude * np.cos(retract_angle), -magnitude * np.sin(retract_angle)
-            elif area_idx == 1:
-                # retract_angle = np.random.choice([np.pi/6, np.pi/6 + 2*np.pi/3])
-                options = [np.pi/6, np.pi/6 + 2*np.pi/3]
-                retract_angle = options[angle_idx]
-                delta_x, delta_y = magnitude * np.cos(retract_angle), -magnitude * np.sin(retract_angle)
-            elif area_idx == 2:
-                # retract_angle = np.random.choice([np.pi/6, np.pi/4])
-                options = [np.pi/6, np.pi/3]
-                retract_angle = options[angle_idx]
-                delta_x, delta_y = -magnitude * np.cos(retract_angle), -magnitude * np.sin(retract_angle)
-            delta_z = 0
+            # delta = -0.05 * SCALE_RATIO
+            delta = -0.06 * SCALE_RATIO
+            # Set action that match with empty quandrants:
+            # 1: [0.05, 0.05, 0.0]
+            # 2: [0.05, -0.05, 0.0]
+            # 3: [-0.05, 0.05, 0.0]
+            # 4: [-0.05, -0.05, 0.0]
+            selected_quadrant = np.random.choice(empty_quandrant) + 1
+            if selected_quadrant == 1:
+                delta_x, delta_y, delta_z = delta, delta, 0.0
+            elif selected_quadrant == 2:
+                delta_x, delta_y, delta_z = delta, -delta, 0.0
+            elif selected_quadrant == 3:
+                delta_x, delta_y, delta_z = -delta, delta, 0.0
+            elif selected_quadrant == 4:
+                delta_x, delta_y, delta_z = -delta, -delta, 0.0
+
 
             x = delta_x + init_pose[0,3]
             y = delta_y + init_pose[1,3]
@@ -606,10 +574,7 @@ if __name__ == "__main__":
 
                     rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
                     partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
-                    print("partial_goal_pc shape:", partial_goal_pc.shape)
-                    temp_pcd = pcd_ize(partial_goal_pc, vis=False)
-                    coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1) 
-                    open3d.visualization.draw_geometries([temp_pcd, coor])
+                    # pcd_ize(partial_goal_pc, vis=True)
                     # full_pc = get_object_particle_state(gym, sim)
 
                     # recorded_goal_pcs.append((full_pc, partial_goal_pc))
@@ -640,16 +605,18 @@ if __name__ == "__main__":
  
         
 
-        # if  data_point_count >= max_data_point_count:                    
-        #     all_done = True 
+        if  data_point_count >= max_data_point_count:                    
+            all_done = True 
 
-        # if angle_idx >= max_sample_count:    
+        if angle_idx >= max_sample_count:    
+            # full_goal_pcs = (recorded_goal_pcs[0][0], recorded_goal_pcs[1][0])
+            # partial_goal_pcs = (recorded_goal_pcs[0][1], recorded_goal_pcs[1][1])
 
-        #     data = {"partial_goal_pcs": recorded_goal_pcs,
-        #             "partial_init_pc": pc_init, 
-        #             "tool_pc": tool_pc,
-        #             "area_idx": area_idx}
-        #     write_pickle_data(data, os.path.join(data_recording_path, f"sample_{data_point_count}.pickle"))
+            data = {"partial_goal_pcs": recorded_goal_pcs,
+                    "partial_init_pc": pc_init, 
+                    "tool_pcs": tool_pcs,
+                    "tool_mask": tool_mask}
+            write_pickle_data(data, os.path.join(data_recording_path, f"sample_{data_point_count}.pickle"))
 
             
             all_done = True

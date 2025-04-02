@@ -40,7 +40,7 @@ from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_came
 from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data
 from utils.point_cloud_utils import pcd_ize, spherify_point_cloud_open3d
 
-
+from retraction_tool_utils import check_plane, visualize_plane
 
 ROBOT_Z_OFFSET = 0.22    #0.25
 # angle_kuka_2 = -0.4
@@ -445,11 +445,26 @@ if __name__ == "__main__":
 
                     tool_pc = get_partial_pointcloud_vectorized(*camera_tool_args)
 
-                    partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
-                    print("partial_goal_pc shape:", partial_goal_pc.shape)
-                    temp_pcd = pcd_ize(partial_goal_pc, vis=False)
-                    coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1) 
-                    open3d.visualization.draw_geometries([temp_pcd, coor])
+                    constrain_plane = np.array([0, 1, 0, -soft_pose.p.y])
+                    x_range=[-0.3,0.3]
+                    y_range=[soft_pose.p.y-0.2, soft_pose.p.y+0.2]
+                    z_range=0.2
+                    num_pts=1000
+                                
+
+                    current_pc = get_object_particle_state(gym, sim)
+                    
+                    check_plane(constrain_plane, current_pc, vis=True, x_range=x_range, y_range=y_range, z_range=z_range)
+                                
+                    
+
+                    # plane_points = visualize_plane(constrain_plane, x_range=[-0.3,0.3], 
+                    #                                y_range=[soft_pose.p.y-0.2, soft_pose.p.y+0.2], z_range=0.2,
+                    #                                num_pts = 1000)
+                    # plane_pcd = pcd_ize(plane_points, color=[0,0,0])
+                    # pcd = pcd_ize(current_pc)
+                    # open3d.visualization.draw_geometries([pcd, plane_pcd])
+
 
 
                     first_time = False
@@ -606,10 +621,7 @@ if __name__ == "__main__":
 
                     rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
                     partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
-                    print("partial_goal_pc shape:", partial_goal_pc.shape)
-                    temp_pcd = pcd_ize(partial_goal_pc, vis=False)
-                    coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1) 
-                    open3d.visualization.draw_geometries([temp_pcd, coor])
+                    # pcd_ize(partial_goal_pc, vis=True)
                     # full_pc = get_object_particle_state(gym, sim)
 
                     # recorded_goal_pcs.append((full_pc, partial_goal_pc))
@@ -624,6 +636,9 @@ if __name__ == "__main__":
                     angle_idx += 1
                     # state = "get shape servo plan"
                     state = "reset"
+
+                    check_plane(constrain_plane, get_object_particle_state(gym, sim), vis=True, 
+                                x_range=x_range, y_range=y_range, z_range=z_range)
 
 
         if state == "reset":   

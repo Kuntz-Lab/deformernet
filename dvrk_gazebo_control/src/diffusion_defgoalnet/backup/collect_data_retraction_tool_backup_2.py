@@ -445,11 +445,6 @@ if __name__ == "__main__":
 
                     tool_pc = get_partial_pointcloud_vectorized(*camera_tool_args)
 
-                    partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
-                    print("partial_goal_pc shape:", partial_goal_pc.shape)
-                    temp_pcd = pcd_ize(partial_goal_pc, vis=False)
-                    coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1) 
-                    open3d.visualization.draw_geometries([temp_pcd, coor])
 
 
                     first_time = False
@@ -539,8 +534,6 @@ if __name__ == "__main__":
         if state == "get shape servo plan":
             rospy.loginfo("**Current state: " + state) 
 
-            print_color(f"angle_idx: {angle_idx}", color="red")
-
 
             delta_alpha, delta_beta, delta_gamma = 1e-6, 1e-6, 1e-6   
 
@@ -550,19 +543,14 @@ if __name__ == "__main__":
 
             magnitude = np.sqrt(delta**2 * 2)
             if area_idx == 0:
-                # retract_angle = np.random.choice([np.pi/6, np.pi/4])
-                options = [np.pi/6, np.pi/3]
-                retract_angle = options[angle_idx]
+                retract_angle = np.random.choice([np.pi/6, np.pi/4])
                 delta_x, delta_y = magnitude * np.cos(retract_angle), -magnitude * np.sin(retract_angle)
             elif area_idx == 1:
-                # retract_angle = np.random.choice([np.pi/6, np.pi/6 + 2*np.pi/3])
-                options = [np.pi/6, np.pi/6 + 2*np.pi/3]
-                retract_angle = options[angle_idx]
+                # delta_x, delta_y = -magnitude, 0
+                retract_angle = np.random.choice([np.pi/6, np.pi/6 + 2*np.pi/3])
                 delta_x, delta_y = magnitude * np.cos(retract_angle), -magnitude * np.sin(retract_angle)
             elif area_idx == 2:
-                # retract_angle = np.random.choice([np.pi/6, np.pi/4])
-                options = [np.pi/6, np.pi/3]
-                retract_angle = options[angle_idx]
+                retract_angle = np.random.choice([np.pi/6, np.pi/4])
                 delta_x, delta_y = -magnitude * np.cos(retract_angle), -magnitude * np.sin(retract_angle)
             delta_z = 0
 
@@ -606,10 +594,7 @@ if __name__ == "__main__":
 
                     rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
                     partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
-                    print("partial_goal_pc shape:", partial_goal_pc.shape)
-                    temp_pcd = pcd_ize(partial_goal_pc, vis=False)
-                    coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1) 
-                    open3d.visualization.draw_geometries([temp_pcd, coor])
+                    # pcd_ize(partial_goal_pc, vis=True)
                     # full_pc = get_object_particle_state(gym, sim)
 
                     # recorded_goal_pcs.append((full_pc, partial_goal_pc))
@@ -640,16 +625,16 @@ if __name__ == "__main__":
  
         
 
-        # if  data_point_count >= max_data_point_count:                    
-        #     all_done = True 
+        if  data_point_count >= max_data_point_count:                    
+            all_done = True 
 
-        # if angle_idx >= max_sample_count:    
+        if angle_idx >= max_sample_count:    
 
-        #     data = {"partial_goal_pcs": recorded_goal_pcs,
-        #             "partial_init_pc": pc_init, 
-        #             "tool_pc": tool_pc,
-        #             "area_idx": area_idx}
-        #     write_pickle_data(data, os.path.join(data_recording_path, f"sample_{data_point_count}.pickle"))
+            data = {"partial_goal_pcs": recorded_goal_pcs,
+                    "partial_init_pc": pc_init, 
+                    "tool_pc": tool_pc,
+                    "area_idx": area_idx}
+            write_pickle_data(data, os.path.join(data_recording_path, f"sample_{data_point_count}.pickle"))
 
             
             all_done = True
