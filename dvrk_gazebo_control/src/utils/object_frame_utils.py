@@ -275,3 +275,38 @@ def world_to_object_frame_PCA(obj_cloud, mp_pos_1):
     align_trans_matrix[2,3] = d_w_o_o[2]    
 
     return align_trans_matrix#, centroid
+
+
+def world_to_object_frame_camera_algin(points):
+
+    # Use PCA to find a starting object frame/centroid.
+    axes, centroid = find_pca_axes(points)
+    axes = np.matrix(np.column_stack(axes))
+
+    # Find and align z axis
+    z_axis = [0., 0., 1.]
+    align_z_axis, min_ang_axis_idx = find_min_ang_vec(z_axis, axes)
+    axes = np.delete(axes, min_ang_axis_idx, axis=1)
+
+    # Find and align x axis.
+    x_axis = [1., 0., 0.]
+    align_x_axis, min_ang_axis_idx = find_min_ang_vec(x_axis, axes) 
+    axes = np.delete(axes, min_ang_axis_idx, axis=1)
+
+    # Find and align y axis
+    y_axis = [0., 1., 0.]
+    align_y_axis, min_ang_axis_idx = find_min_ang_vec(y_axis, axes) 
+
+    R_o_w = np.column_stack((align_x_axis, align_y_axis, align_z_axis))
+    
+    # Transpose to get rotation from world to object frame.
+    R_w_o = np.transpose(R_o_w)
+    d_w_o_o = np.dot(-R_w_o, centroid).flatten()
+    
+    homo_mat = np.eye(4)
+    homo_mat[:3,:3] = R_w_o
+    homo_mat[:3,3] = d_w_o_o
+
+    assert is_homogeneous_matrix(homo_mat)
+
+    return homo_mat

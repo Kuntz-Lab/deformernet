@@ -277,8 +277,11 @@ if __name__ == "__main__":
     # cam_positions.append(gymapi.Vec3(-0.3, soft_pose.p.y, 0.25))   # put camera on the side of object
     # cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
 
-    cam_positions.append(gymapi.Vec3(-0.0, soft_pose.p.y + 0.001, 0.5))   # put camera on top of object
-    cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
+    # cam_positions.append(gymapi.Vec3(-0.0, soft_pose.p.y + 0.001, 0.5))   # put camera on top of object
+    # cam_targets.append(gymapi.Vec3(0.0, soft_pose.p.y, 0.01))
+
+    cam_positions.append(gymapi.Vec3(-0.0, 0.001, 0.5))   # put camera on top of object
+    cam_targets.append(gymapi.Vec3(0.0, 0.0, 0.01))
 
     for i, env_obj in enumerate(envs_obj):
             cam_handles.append(gym.create_camera_sensor(env_obj, cam_props))
@@ -296,7 +299,7 @@ if __name__ == "__main__":
     '''
     Main stuff is here
     '''
-    rospy.init_node('isaac_grasp_client')
+    rospy.init_node('cam_matrix_node', anonymous=True)
     print_color(f"Object: {args.obj_name}, Stiffness: {args.stiffness}", "green") 
  
 
@@ -395,6 +398,9 @@ if __name__ == "__main__":
                     open3d.io.write_point_cloud("/home/baothach/shape_servo_data/multi_grasps/1.pcd", pcd) # save_grasp_visual_data , point cloud of the object
                     pc_ros_msg = dc_client.seg_obj_from_file_client(pcd_file_path = "/home/baothach/shape_servo_data/multi_grasps/1.pcd", align_obj_frame = False).obj
                     pc_ros_msg = fix_object_frame(pc_ros_msg)
+
+                    get_partial_pointcloud_vectorized(*camera_args)
+                    all_done = True
                 
                 state = "generate preshape"                
                 frame_count = 0    
@@ -652,45 +658,45 @@ if __name__ == "__main__":
                     _, final_trans_2 = get_pykdl_client(robot_2.get_arm_joint_positions())
                     # print("***Final x, y, z: ", final_pose["pose"]["p"]["x"], final_pose["pose"]["p"]["y"], final_pose["pose"]["p"]["z"] ) 
                     
-                    for j, (curr_trans_1, curr_trans_2) in enumerate(zip(curr_trans_on_trajectory_1, curr_trans_on_trajectory_2)):    
-                        # print(j)                    
-                        p_1, R_1, twist_1 = tvc_behavior_1.get_transform(curr_trans_1, final_trans_1, get_twist=True)
-                        mani_point_1 = curr_trans_1
+                    # for j, (curr_trans_1, curr_trans_2) in enumerate(zip(curr_trans_on_trajectory_1, curr_trans_on_trajectory_2)):    
+                    #     # print(j)                    
+                    #     p_1, R_1, twist_1 = tvc_behavior_1.get_transform(curr_trans_1, final_trans_1, get_twist=True)
+                    #     mani_point_1 = curr_trans_1
 
-                        p_2, R_2, twist_2 = tvc_behavior_2.get_transform(curr_trans_2, final_trans_2, get_twist=True)
-                        mani_point_2 = curr_trans_2
+                    #     p_2, R_2, twist_2 = tvc_behavior_2.get_transform(curr_trans_2, final_trans_2, get_twist=True)
+                    #     mani_point_2 = curr_trans_2
 
-                        partial_pcs = (pc_on_trajectory[j], pc_goal)
-                        full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
+                    #     partial_pcs = (pc_on_trajectory[j], pc_goal)
+                    #     full_pcs = (full_pc_on_trajectory[j], full_pc_goal)
 
-                        mani_point = np.array([mani_point_1[0,3], mani_point_1[1,3]- two_robot_offset, mani_point_1[2,3] + ROBOT_Z_OFFSET,
-                                               -mani_point_2[0,3], -mani_point_2[1,3], mani_point_2[2,3] + ROBOT_Z_OFFSET]) \
-                                    + np.concatenate((shift, shift))
+                    #     mani_point = np.array([mani_point_1[0,3], mani_point_1[1,3]- two_robot_offset, mani_point_1[2,3] + ROBOT_Z_OFFSET,
+                    #                            -mani_point_2[0,3], -mani_point_2[1,3], mani_point_2[2,3] + ROBOT_Z_OFFSET]) \
+                    #                 + np.concatenate((shift, shift))
 
-                        data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
-                                "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
-                                "mani_point": mani_point, "obj_name": args.obj_name}
+                    #     data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
+                    #             "pos": (p_1, p_2), "rot": (R_1, R_2), "twist": (twist_1, twist_2), \
+                    #             "mani_point": mani_point, "obj_name": args.obj_name}
 
-                        # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
-                        #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
-                        print("New data_point_count:", data_point_count)
-                        data_point_count += 1       
+                    #     # with open(os.path.join(data_recording_path, "sample " + str(data_point_count) + ".pickle"), 'wb') as handle:
+                    #     #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                               
+                    #     print("New data_point_count:", data_point_count)
+                    #     data_point_count += 1       
 
 
-                    if sample_count == 0:
-                        for j in range(1,len(pc_on_trajectory)):    
-                            partial_pcs = (pc_init, pc_on_trajectory[j])
-                            full_pcs = (full_pc_init, full_pc_on_trajectory[j])
+                    # if sample_count == 0:
+                    #     for j in range(1,len(pc_on_trajectory)):    
+                    #         partial_pcs = (pc_init, pc_on_trajectory[j])
+                    #         full_pcs = (full_pc_init, full_pc_on_trajectory[j])
 
-                            mani_point = np.array(list(mp_mani_point_1["pose"][0]) + list(mp_mani_point_2["pose"][0])) + np.concatenate((shift, shift))
-                            data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
-                                    "mani_point": mani_point, "obj_name": args.obj_name}
-                            with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
-                                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
+                    #         mani_point = np.array(list(mp_mani_point_1["pose"][0]) + list(mp_mani_point_2["pose"][0])) + np.concatenate((shift, shift))
+                    #         data = {"full pcs": full_pcs, "partial pcs": partial_pcs, 
+                    #                 "mani_point": mani_point, "obj_name": args.obj_name}
+                    #         with open(os.path.join(mp_data_recording_path, "sample " + str(mp_data_point_count) + ".pickle"), 'wb') as handle:
+                    #             pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)                          
                             
 
-                            print("New mp_data_point_count:", mp_data_point_count)
-                            mp_data_point_count += 1      
+                    #         print("New mp_data_point_count:", mp_data_point_count)
+                    #         mp_data_point_count += 1      
 
                     frame_count = 0
                     terminate_count = 0

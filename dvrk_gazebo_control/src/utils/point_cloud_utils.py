@@ -384,6 +384,22 @@ def compose_4x4_homo_mat(rotation, translation):
     return ht_matrix
 
 
+def invert_4x4_transformation_matrix(H):
+    # Compute the inverse of T_world_to_object
+    R = H[:3, :3]  # Extract the 3x3 rotation matrix
+    t = H[:3, 3]   # Extract the 3x1 translation vector
+
+    R_inv = R.T  # Transpose of the rotation matrix
+    t_inv = -np.dot(R_inv, t)  # Inverse translation
+
+    # Construct the inverse transformation matrix
+    inverted_H = np.eye(4)
+    inverted_H[:3, :3] = R_inv
+    inverted_H[:3, 3] = t_inv
+    return inverted_H
+
+
+
 def compute_object_to_eef(T_world_to_object, T_world_to_eef):
     """
     Computes the transformation matrix of the robot end effector in the object frame.
