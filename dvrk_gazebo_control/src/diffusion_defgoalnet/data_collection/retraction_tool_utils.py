@@ -91,7 +91,8 @@ def check_plane(constrain_plane, current_pc, vis=False, x_range=[-1,1], y_range=
     total_num_pts = len(current_pc)
     total_passed = len(success_points)
     
-    print_color(f"\n*** Percentage passed: {total_passed/total_num_pts*100:.2f}\n\n", color="green")
+    percentage_passed = total_passed / total_num_pts * 100
+    print_color(f"\n*** Percentage passed: {percentage_passed:.2f}\n\n", color="green")
 
     if vis:
         pcd = pcd_ize(current_pc, color=[1,0,0])
@@ -99,6 +100,8 @@ def check_plane(constrain_plane, current_pc, vis=False, x_range=[-1,1], y_range=
                                             x_range=x_range, y_range=y_range, z_range=z_range), 
                                             color=[0,0,0])
         open3d.visualization.draw_geometries([pcd, pcd_plane])
+
+    return percentage_passed
 
 
 def visualize_plane(plane_eq, x_range=[-1,0], y_range=[-1,0], z_range=0.2,num_pts = 10000):

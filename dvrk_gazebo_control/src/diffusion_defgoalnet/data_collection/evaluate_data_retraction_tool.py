@@ -40,8 +40,8 @@ from diffusion_defgoalnet.util.retraction_cutting_utils import get_eef_position
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
 from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data
 from utils.point_cloud_utils import pcd_ize, down_sampling, transform_point_cloud, compute_world_to_eef, compose_4x4_homo_mat, compute_object_to_eef, rotate_around_z, invert_4x4_transformation_matrix
-from utils.object_frame_utils import world_to_object_frame_camera_algin
-
+from utils.object_frame_utils import world_to_object_frame_camera_align
+from retraction_tool_utils import check_plane, visualize_plane
 
 
 ROBOT_Z_OFFSET = 0.22    #0.25
@@ -458,7 +458,7 @@ if __name__ == "__main__":
     def transform_pc_world_to_object_frame(pc, camera_view_matrix, T_camera_to_object=None):
         pc = transform_point_cloud(pc, camera_view_matrix.T)    # Transform world to camera frame
         if T_camera_to_object is None:
-            T_camera_to_object = world_to_object_frame_camera_algin(pc)
+            T_camera_to_object = world_to_object_frame_camera_align(pc)
         pc = transform_point_cloud(pc, T_camera_to_object)  # Transform camera to object frame
         return pc, T_camera_to_object
     
@@ -496,15 +496,56 @@ if __name__ == "__main__":
                     saved_robot_state = deepcopy(gym.get_actor_rigid_body_states(envs[i], kuka_handles_2[i], gymapi.STATE_ALL))
 
                     tool_pc = get_partial_pointcloud_vectorized(*camera_tool_args)
+                    init_pc = get_partial_pointcloud_vectorized(*camera_args) 
 
-                    # partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
-                    # print("partial_goal_pc shape:", partial_goal_pc.shape)
-                    # temp_pcd = pcd_ize(partial_goal_pc, vis=False)
-                    # coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1) 
-                    # open3d.visualization.draw_geometries([temp_pcd, coor])
+                    num_pts = 512                               
 
+                    init_pc = down_sampling(init_pc, num_pts)
+                    context_pc = down_sampling(tool_pc, num_pts)
+
+                    init_pc, T_camera_to_object = transform_pc_world_to_object_frame(init_pc, camera_view_matrix, T_camera_to_object=None)
+                    context_pc, _ = transform_pc_world_to_object_frame(context_pc, camera_view_matrix, T_camera_to_object)
+
+                    if goal_model == "diffdef":
+                        diffdef_shift = init_pc.mean(axis=0)
+                        scale = (init_pc - diffdef_shift).flatten().std()                 
+                        init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3)
+                        context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3) 
+                        
+                        num_points_deformernet = 1024
+                        z = torch.randn([1, ckpt['args'].latent_dim]).to(args.device) #* 0.1
+                        x = model.sample(z, context_pc_tensor, init_pc_tensor, num_points_deformernet, flexibility=ckpt['args'].flexibility)
+                        
+                        first_goal_pc_object_frame = x[0].detach().cpu().numpy()*scale + diffdef_shift
+                        
+                    elif goal_model == "defgoalnet":
+                        diffdef_shift = init_pc.mean(axis=0)
+                        scale = (init_pc - diffdef_shift).flatten().std()                 
+                        init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
+                        context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
+                        first_goal_pc_object_frame = model(init_pc_tensor, context_pc_tensor).permute(0,2,1).squeeze().detach().cpu().numpy()*scale + diffdef_shift      
+
+                    goal_pc_camera_frame = transform_point_cloud(first_goal_pc_object_frame, invert_4x4_transformation_matrix(T_camera_to_object))  # Transform object frame to camera frame
+                    # pcd = pcd_ize(init_pc, color=[0,0,0])
+                    # pcd_goal = pcd_ize(first_goal_pc_object_frame, color=[1,0,0])
+                    # pcd_context = pcd_ize(context_pc, color=[0,1,0])
+                    # open3d.visualization.draw_geometries([pcd, pcd_goal, pcd_context])
 
                     first_time = False
+
+                    # Evaluation with plane
+                    constrain_plane = np.array([0, 1, 0, -soft_pose.p.y])
+                    x_range=[-0.3,0.3]
+                    y_range=[soft_pose.p.y-0.2, soft_pose.p.y+0.2]
+                    z_range=0.2
+                    num_pts=1000
+                    vis_plane = True
+
+                    percentage_passed = check_plane(constrain_plane, get_object_particle_state(gym, sim), 
+                                                    vis=vis_plane, 
+                                                    x_range=x_range, y_range=y_range, z_range=z_range)
+
+
                 state = "generate preshape"
                 
                 frame_count = 0
@@ -541,7 +582,7 @@ if __name__ == "__main__":
                 # rospy.loginfo('Moving to this preshape goal: ' + str(cartesian_goal))
 
 
-            pc_init = get_partial_pointcloud_vectorized(*camera_args)  
+             
             # full_pc_init = get_object_particle_state(gym, sim)
 
 
@@ -593,42 +634,46 @@ if __name__ == "__main__":
 
             with torch.no_grad():   
 
-                num_pts = 512  
-                init_pc = down_sampling(get_partial_pointcloud_vectorized(*camera_args), num_pts)
-                context_pc = down_sampling(tool_pc, num_pts)
+                # num_pts = 512  
 
-                init_pc, T_camera_to_object = transform_pc_world_to_object_frame(init_pc, camera_view_matrix, T_camera_to_object=None)
-                context_pc, _ = transform_pc_world_to_object_frame(context_pc, camera_view_matrix, T_camera_to_object)
+                # if action_count == 0:                                 
 
-                if action_count == 0:                                 
-                    if goal_model == "diffdef":
-                        diffdef_shift = init_pc.mean(axis=0)
-                        scale = (init_pc - diffdef_shift).flatten().std()                 
-                        init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3)
-                        context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3) 
-                        
-                        sample_num_points = 1024
-                        z = torch.randn([1, ckpt['args'].latent_dim]).to(args.device) * 0.1
-                        x = model.sample(z, context_pc_tensor, init_pc_tensor, sample_num_points, flexibility=ckpt['args'].flexibility)
-                        
-                        first_goal_pc_object_frame = x[0].detach().cpu().numpy()*scale + diffdef_shift
-                        
-                    elif goal_model == "defgoalnet":
-                        diffdef_shift = init_pc.mean(axis=0)
-                        scale = (init_pc - diffdef_shift).flatten().std()                 
-                        init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
-                        context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
-                        first_goal_pc_object_frame = model(init_pc_tensor, context_pc_tensor).permute(0,2,1).squeeze().detach().cpu().numpy()*scale + diffdef_shift      
+                #     init_pc = down_sampling(init_pc, num_pts)
+                #     context_pc = down_sampling(tool_pc, num_pts)
 
-                    goal_pc_camera_frame = transform_point_cloud(first_goal_pc_object_frame, invert_4x4_transformation_matrix(T_camera_to_object))  # Transform object frame to camera frame
+                #     init_pc, T_camera_to_object = transform_pc_world_to_object_frame(init_pc, camera_view_matrix, T_camera_to_object=None)
+                #     context_pc, _ = transform_pc_world_to_object_frame(context_pc, camera_view_matrix, T_camera_to_object)
+
+                #     if goal_model == "diffdef":
+                #         diffdef_shift = init_pc.mean(axis=0)
+                #         scale = (init_pc - diffdef_shift).flatten().std()                 
+                #         init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3)
+                #         context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3) 
+                        
+                #         num_points_deformernet = 1024
+                #         z = torch.randn([1, ckpt['args'].latent_dim]).to(args.device) * 0.1
+                #         x = model.sample(z, context_pc_tensor, init_pc_tensor, num_points_deformernet, flexibility=ckpt['args'].flexibility)
+                        
+                #         first_goal_pc_object_frame = x[0].detach().cpu().numpy()*scale + diffdef_shift
+                        
+                #     elif goal_model == "defgoalnet":
+                #         diffdef_shift = init_pc.mean(axis=0)
+                #         scale = (init_pc - diffdef_shift).flatten().std()                 
+                #         init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsq                                                                                                                                                                                                                     ueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
+                #         context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
+                #         first_goal_pc_object_frame = model(init_pc_tensor, context_pc_tensor).permute(0,2,1).squeeze().detach().cpu().numpy()*scale + diffdef_shift      
+
+                #     goal_pc_camera_frame = transform_point_cloud(first_goal_pc_object_frame, invert_4x4_transformation_matrix(T_camera_to_object))  # Transform object frame to camera frame
 
                 goal_pc_object_frame = transform_point_cloud(goal_pc_camera_frame, T_camera_to_object)  # Transform camera frame to object frame
                 goal_pc_tensor = torch.from_numpy(goal_pc_object_frame).unsqueeze(0).float().permute(0,2,1).to(args.device)  # shape (1, num_pts, 3)
 
                 mani_point = init_pose[:3,3] * np.array([-1,-1,1]) + np.array([0,0, ROBOT_Z_OFFSET])
+                mani_point = transform_pc_world_to_object_frame(mani_point.reshape(1, -1), camera_view_matrix, T_camera_to_object)[0].flatten()
 
                 # Add manipulation point channel
-                current_pc_numpy = init_pc
+                current_pc_numpy = down_sampling(get_partial_pointcloud_vectorized(*camera_args), num_points_deformernet)
+                current_pc_numpy, _ = transform_pc_world_to_object_frame(current_pc_numpy, camera_view_matrix, T_camera_to_object)
                 neigh = NearestNeighbors(n_neighbors=50)
                 neigh.fit(current_pc_numpy)
                 _, nearest_idxs = neigh.kneighbors(mani_point.reshape(1, -1))
@@ -642,6 +687,8 @@ if __name__ == "__main__":
                 pos *= 0.001
                 pos, rot_mat = pos.detach().cpu().numpy(), rot_mat.detach().cpu().numpy()
 
+                print("pos (object frame):", pos[0][:3])
+
                 # Transform robot action from object frame to world frame
                 eef_pose_object_frame = compose_4x4_homo_mat(rot_mat, pos[0][:3])
                 
@@ -650,13 +697,15 @@ if __name__ == "__main__":
 
                 eef_pose_world_frame = compute_world_to_eef(modified_world_to_object_H, eef_pose_object_frame)
                 eef_pose_world_frame = rotate_around_z(eef_pose_world_frame, np.pi)
+
+                print("pos (world frame):", eef_pose_world_frame[:3,3])
                     
                 desired_pos = (eef_pose_world_frame[:3,3] + init_pose[:3,3]).flatten()
                 desired_rot = eef_pose_world_frame[:3,:3] @ init_pose[:3,:3]
 
-                pcd = pcd_ize(init_pc, color=[0,0,0])
-                colors = np.zeros(init_pc.shape)
-                colors[nearest_idxs.flatten()] = [1,0,0]
+                pcd = pcd_ize(current_pc_numpy, color=[0,0,0])
+                colors = np.zeros(current_pc_numpy.shape)
+                colors[nearest_idxs.flatten()] = [0,1,0]
                 pcd.colors =  open3d.utility.Vector3dVector(colors)
                 mani_point_sphere = open3d.geometry.TriangleMesh.create_sphere(radius=0.01)
                 mani_point_sphere.paint_uniform_color([0,0,1])
@@ -718,9 +767,15 @@ if __name__ == "__main__":
 
                     frame_count = 0
                     angle_idx += 1
-                    # state = "get shape servo plan"
-                    state = "reset"
+                    state = "get shape servo plan"
+                    # state = "reset"
 
+                    _,init_pose = get_pykdl_client(robot.get_arm_joint_positions())
+                    init_eulers = transformations.euler_from_matrix(init_pose)
+
+                    percentage_passed = check_plane(constrain_plane, get_object_particle_state(gym, sim), 
+                                                    vis=vis_plane, 
+                                                    x_range=x_range, y_range=y_range, z_range=z_range)
 
         if state == "reset":   
             rospy.loginfo("**Current state: " + state)

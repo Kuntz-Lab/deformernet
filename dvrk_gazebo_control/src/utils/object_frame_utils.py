@@ -277,7 +277,7 @@ def world_to_object_frame_PCA(obj_cloud, mp_pos_1):
     return align_trans_matrix#, centroid
 
 
-def world_to_object_frame_camera_algin(points):
+def world_to_object_frame_camera_align(points):
 
     # Use PCA to find a starting object frame/centroid.
     axes, centroid = find_pca_axes(points)

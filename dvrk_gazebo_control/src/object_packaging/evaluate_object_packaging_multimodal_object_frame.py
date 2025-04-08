@@ -22,7 +22,7 @@ from utils.isaac_utils import fix_object_frame, get_pykdl_client
 from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data
 from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
 from utils.point_cloud_utils import pcd_ize, down_sampling, transform_point_cloud, compute_world_to_eef, compose_4x4_homo_mat, compute_object_to_eef, rotate_around_z, invert_4x4_transformation_matrix
-from utils.object_frame_utils import world_to_object_frame_camera_algin
+from utils.object_frame_utils import world_to_object_frame_camera_align
 import pickle5 as pickle
 import timeit
 from copy import deepcopy
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     def transform_pc_world_to_object_frame(pc, camera_view_matrix, T_camera_to_object=None):
         pc = transform_point_cloud(pc, camera_view_matrix.T)    # Transform world to camera frame
         if T_camera_to_object is None:
-            T_camera_to_object = world_to_object_frame_camera_algin(pc)
+            T_camera_to_object = world_to_object_frame_camera_align(pc)
         pc = transform_point_cloud(pc, T_camera_to_object)  # Transform camera to object frame
         return pc, T_camera_to_object
 
@@ -497,7 +497,7 @@ if __name__ == "__main__":
                     pc_ros_msg = fix_object_frame(pc_ros_msg)
 
                     # init_pc = down_sampling(get_partial_pointcloud_vectorized(*camera_args), 1024)
-                    # # T_camera_to_object = world_to_object_frame_camera_algin(init_pc)
+                    # # T_camera_to_object = world_to_object_frame_camera_align(init_pc)
                     # init_pc, _ = transform_pc_world_to_object_frame(init_pc, camera_view_matrix)
                     # pcd_init = pcd_ize(init_pc, color=[0,0,0])
                     # coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
