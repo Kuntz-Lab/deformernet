@@ -79,7 +79,8 @@ class BaoFlowVAE(Module):
         return loss
 
     def sample(self, w, context_pc, init_pc, num_points, flexibility, truncate_std=None):
-        goal_idx = np.random.randint(0, 2, size=(1,))
+        # goal_idx = np.random.randint(0, 2, size=(1,))
+        goal_idx = np.array([1])
         goal_idx = torch.from_numpy(goal_idx).unsqueeze(0).repeat(context_pc.shape[0], 256).float().to(context_pc.device)
 
         batch_size, _ = w.size()

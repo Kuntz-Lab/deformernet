@@ -720,17 +720,17 @@ if __name__ == "__main__":
                                 deformable_pcds.append(pcd_ize(all_recorded_pcs[i]))
                             open3d.visualization.draw_geometries(deformable_pcds + [rigid_pcd])
                                 
-                        # if len(global_all_recorded_pcs) == max_goal_count:
-                        #     assert len(global_all_recorded_pcs) == len(global_all_recorded_full_pcs) 
+                        if len(global_all_recorded_pcs) == max_goal_count:
+                            assert len(global_all_recorded_pcs) == len(global_all_recorded_full_pcs) 
                             
-                        #     for idx, (all_recorded_pcs, all_recorded_full_pcs) in enumerate(zip(global_all_recorded_pcs, global_all_recorded_full_pcs)):
-                        #         data = {"all_recorded_pcs": all_recorded_pcs, "all_recorded_full_pcs": all_recorded_full_pcs,
-                        #                 "pc_rigid": pc_rigid, "obj_name": args.obj_name, "obj_angle": obj_angle,
-                        #                 "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
-                        #         data_path = f"{data_recording_path}/sample_{data_point_count // max_goal_count}_goal_{idx}.pickle"
-                        #         write_pickle_data(data, data_path)       
-                        #         # all_done = True 
-                        #         print_color(f"\n*** Total data point count: {len(os.listdir(data_recording_path))}\n")
+                            for idx, (all_recorded_pcs, all_recorded_full_pcs) in enumerate(zip(global_all_recorded_pcs, global_all_recorded_full_pcs)):
+                                data = {"all_recorded_pcs": all_recorded_pcs, "all_recorded_full_pcs": all_recorded_full_pcs,
+                                        "pc_rigid": pc_rigid, "obj_name": args.obj_name, "obj_angle": obj_angle,
+                                        "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
+                                data_path = f"{data_recording_path}/sample_{data_point_count // max_goal_count}_goal_{idx}.pickle"
+                                write_pickle_data(data, data_path)       
+                                # all_done = True 
+                                print_color(f"\n*** Total data point count: {len(os.listdir(data_recording_path))}\n")
 
 
         if state == "reset":   

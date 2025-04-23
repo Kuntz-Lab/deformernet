@@ -73,6 +73,8 @@ if __name__ == "__main__":
             {"name": "--stiffness", "type": str, "default": "5k", "help": "Select object stiffness. Options: 1k, 5k, 10k"},
             {"name": "--obj_name", "type": int, "default": 0, "help": "select variations of a primitive shape"},
             {"name": "--goal_model", "type": str, "default": "diffdef", "help": "Select goal model. Options: diffdef, defgoalnet"},
+            {"name": "--datasize", "type": int, "help": "dataset size"},
+            {"name": "--model_seed", "type": int, "help": "model seed"},
             {"name": "--headless", "type": str, "default": "False", "help": "headless mode"}])
 
     num_envs = args.num_envs
@@ -385,10 +387,15 @@ if __name__ == "__main__":
     # DiffDef Model
     goal_model = args.goal_model
     print_color(f"\n***** USING {goal_model} *****\n", "green")
+    print_color(f"\nDatasize: {args.datasize}, Model seed: {args.model_seed}\n", "green")
     args.device = "cuda"
-    
+        
     if goal_model == "diffdef":
-        ckpt = torch.load("/home/baothach/diffusion-point-cloud/weights/object_packaging/weights_04.07.2025-17:44/ckpt_0.000000_2000.pt")
+        # ckpt = torch.load("/home/baothach/diffusion-point-cloud/weights/object_packaging/weights_04.07.2025-17:44/ckpt_0.000000_2000.pt")
+        if args.datasize == 10:
+            ckpt = torch.load(f"/home/baothach/diffusion-point-cloud/weights/object_packaging/datasize_{args.datasize}_seed_{args.model_seed}/ckpt_0.000000_30000.pt")
+        else:
+            ckpt = torch.load(f"/home/baothach/diffusion-point-cloud/weights/object_packaging/datasize_{args.datasize}/ckpt_0.000000_30000.pt")
         model = BaoFlowVAE(ckpt['args']).to(args.device)
         model.load_state_dict(ckpt['state_dict'])
         model.eval()
@@ -412,10 +419,10 @@ if __name__ == "__main__":
     deformernet.load_state_dict(torch.load(os.path.join(weight_path, f"epoch {200}")))
     deformernet.eval()
  
-    results_path = f"/home/baothach/shape_servo_data/diffusion_defgoalnet/object_packaging_multimodal/evaluation/{object_category}/{goal_model}" 
+    results_path = f"/home/baothach/shape_servo_data/diffusion_defgoalnet/object_packaging_multimodal/evaluation/{goal_model}/datasize_{args.datasize}_seed_{args.model_seed}" 
     os.makedirs(results_path, exist_ok=True)
     data_point_count = len(os.listdir(results_path))            
-    max_data_point_count = 100
+    max_data_point_count = 50   #100
             
     start_time = timeit.default_timer()    
 
@@ -667,8 +674,8 @@ if __name__ == "__main__":
                             first_goal_pc_object_frame = x[0].detach().cpu().numpy()*scale + diffdef_shift
                             
                         elif goal_model == "defgoalnet":
-                            diffdef_shift = init_pc.mean(axis=0)
-                            scale = (init_pc - diffdef_shift).flatten().std()                 
+                            diffdef_shift = context_pc.mean(axis=0)
+                            scale = (context_pc - diffdef_shift).flatten().std()                 
                             init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
                             context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
                             first_goal_pc_object_frame = model(init_pc_tensor, context_pc_tensor).permute(0,2,1).squeeze().detach().cpu().numpy()*scale + diffdef_shift      
@@ -732,8 +739,8 @@ if __name__ == "__main__":
 
                 coor_object = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.15)
                 coor_object.transform(T_camera_to_object) 
-                open3d.visualization.draw_geometries([pcd, pcd_goal, \
-                                                    mani_point_1_sphere, mani_point_2_sphere, coor, coor_object, pcd_context])
+                # open3d.visualization.draw_geometries([pcd, pcd_goal, \
+                #                                     mani_point_1_sphere, mani_point_2_sphere, coor, coor_object, pcd_context])
 
                 temp1 = np.eye(4)
                 temp1[:3,:3] = rot_mat_1 
@@ -749,10 +756,7 @@ if __name__ == "__main__":
 
                 eef_pose_1_world_frame = compute_world_to_eef(modified_world_to_object_H, eef_pose_1_object_frame)
                 eef_pose_2_world_frame = compute_world_to_eef(modified_world_to_object_H, eef_pose_2_object_frame) 
-                # print("BEFORE eef_pose_2_world_frame:", eef_pose_2_world_frame)
                 eef_pose_2_world_frame = rotate_around_z(eef_pose_2_world_frame, np.pi) 
-                # print("AFTER eef_pose_2_world_frame:", eef_pose_2_world_frame)
-                # print("\n")
                     
                 desired_pos_1 = (eef_pose_1_world_frame[:3,3] + init_pose_1[:3,3]).flatten()
                 desired_rot_1 = eef_pose_1_world_frame[:3,:3] @ init_pose_1[:3,:3]
@@ -766,9 +770,6 @@ if __name__ == "__main__":
                 tvc_behavior_2 = TaskVelocityControl2([*desired_pos_2, desired_rot_2], robot_2, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
                                                     pos_threshold = 2e-3, ori_threshold=5e-2)
                   
-            # else:
-            #     rospy.logerr("Exceed max action count")
-            #     all_done = True
                  
 
             if False:   #action_count == 2: 
@@ -832,10 +833,6 @@ if __name__ == "__main__":
                 action_2 = tvc_behavior_2.get_action() 
                 # print("action_1, action_2:", action_1, action_2)
                 if (action_1 is not None) and (action_2 is not None) and gym.get_sim_time(sim) - closed_loop_start_time <= 1.5: 
-                    # if action_count == 2:
-                    #     scaled_action_1 = action_1.get_joint_position()
-                    #     scaled_action_2 = action_2.get_joint_position()
-                    # else:
                     scaled_action_1 = action_1.get_joint_position() * 4
                     scaled_action_2 = action_2.get_joint_position() * 4
                     gym.set_actor_dof_velocity_targets(robot_1.env_handle, robot_1.robot_handle, scaled_action_1)
@@ -845,21 +842,12 @@ if __name__ == "__main__":
 
                 else:   
                     rospy.logerr(f"Complete action: {action_count-1}")
-                    # enclosed = check_points_enclosed_by_square(get_object_particle_state(gym, sim))                                                             
-                    # print("enclosed?:", enclosed)
-                    # # visualize_enclosure(get_object_particle_state(gym, sim))
                     
                     if visualization:
                         if action_count == 3:
                             pcd_ize(get_partial_pointcloud_vectorized(*camera_args), vis=True)                                        
                             visualize_camera_views(gym, sim, envs_obj[0], cam_handles, \
-                                                resolution=[cam_props.height, cam_props.width], output_file=output_file)   
-                        
-                    # rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
-                    
-                    # if sample_count == 0:
-                    
-             
+                                                resolution=[cam_props.height, cam_props.width], output_file=output_file)                                 
 
                     frame_count = 0
                     state = "get shape servo plan"
@@ -871,11 +859,11 @@ if __name__ == "__main__":
                             
                     if action_count >= max_action_count or enclosed_percent >= 99:
                         print_color(f"Final enclosed percentage: {enclosed_percent:.2f}", "green")
-                        # data = {"enclosed_percent": enclosed_percent, 
-                        #         "obj_name": args.obj_name, 
-                        #         "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
-                        # data_path = f"{results_path}/sample_{data_point_count}.pickle"
-                        # write_pickle_data(data, data_path)       
+                        data = {"enclosed_percent": enclosed_percent, 
+                                "obj_name": args.obj_name, 
+                                "rigid_pose": np.array([rigid_pose.p.x, rigid_pose.p.y, rigid_pose.p.z, rigid_pose.r.w, rigid_pose.r.x, rigid_pose.r.y, rigid_pose.r.z])}
+                        data_path = f"{results_path}/sample_{data_point_count}.pickle"
+                        write_pickle_data(data, data_path)       
                         all_done = True 
                         print_color(f"\n*** Total data point count: {len(os.listdir(results_path))}\n")
 
@@ -905,22 +893,14 @@ if __name__ == "__main__":
             init_eulers_2 = transformations.euler_from_matrix(init_pose_2)
             
             state = "get shape servo plan"
-            
 
-        # if data_point_count >= max_data_point_count:
-        #     all_done = True
-
-
+        if data_point_count >= max_data_point_count:
+            all_done = True
 
         # step rendering
         gym.step_graphics(sim)
         if not args.headless:
             gym.draw_viewer(viewer, sim, False)
-
-
-  
-   
-
 
 
     print("All done !")

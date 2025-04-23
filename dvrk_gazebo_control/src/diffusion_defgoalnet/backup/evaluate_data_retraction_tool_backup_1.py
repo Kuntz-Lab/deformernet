@@ -37,7 +37,7 @@ sys.path.append("../")
 sys.path.append(pkg_path + '/src/diffusion_defgoalnet')
 from util.retraction_tool_utils import get_random_tool_pose, random_boolean_mask, sample_cylindrical_point
 from diffusion_defgoalnet.util.retraction_cutting_utils import get_eef_position
-from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views, compute_pointcloud_pixel_coordinates_on_image, project_pointcloud_on_image
+from utils.camera_utils import get_partial_pointcloud_vectorized, visualize_camera_views
 from utils.miscellaneous_utils import get_object_particle_state, write_pickle_data, print_lists_with_formatting, print_color, read_pickle_data
 from utils.point_cloud_utils import pcd_ize, down_sampling, transform_point_cloud, compute_world_to_eef, compose_4x4_homo_mat, compute_object_to_eef, rotate_around_z, invert_4x4_transformation_matrix
 from utils.object_frame_utils import world_to_object_frame_camera_align
@@ -80,8 +80,6 @@ if __name__ == "__main__":
             {"name": "--obj_name", "type": str, "default": 'cylinder_0', "help": "select variations of a primitive shape"},
             {"name": "--headless", "type": str, "default": "False", "help": "headless mode"},
             {"name": "--goal_model", "type": str, "default": "diffdef", "help": "Select goal model. Options: diffdef, defgoalnet"},
-            {"name": "--datasize", "type": int, "help": "dataset size"},
-            {"name": "--model_seed", "type": int, "help": "model seed"},
             {"name": "--data_category", "type": str, "default": "deformernet", "help": "deformernet or MP"}])
     
     num_envs = args.num_envs
@@ -276,7 +274,7 @@ if __name__ == "__main__":
         #     rigid_actor = gym.create_actor(env, rigid_asset, rigid_pose, f'tool_{j}', i, 1, segmentationId=12+j)
         #     gym.set_rigid_body_color(env, rigid_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
-        area_idx = 2    #np.random.randint(0, 3)   
+        area_idx = np.random.randint(0, 3)   
         r_min, r_max = radius + 0.01, radius + 0.03    #0.03, 0.05
         if area_idx == 0:
             theta_min, theta_max = np.pi/6, np.pi/3
@@ -373,26 +371,24 @@ if __name__ == "__main__":
     all_done = False
     state = "home"
     
-    # args.datasize = 10  #1000
-    # args.model_seed = 0
-    data_recording_path = os.path.join(main_path, f"retraction_tool/evaluation/{args.goal_model}/datasize_{args.datasize}_seed_{args.model_seed}")
+
+    data_recording_path = os.path.join(main_path, "data/retraction_tool_3")
     os.makedirs(data_recording_path, exist_ok=True)
     
         
     print_color(f"\n\n*** Object name: {args.obj_name}\n\n")
 
     action_count = 0
-    max_action_count = 6
     terminate_count = 0
     sample_count = 0
     frame_count = 0
     group_count = 0
     data_point_count = len(os.listdir(data_recording_path))
     rospy.logwarn(f"data_point_count: {data_point_count}")
-    # max_sample_count = 1    #2
+    max_sample_count = 2    #4
 
 
-    max_data_point_count = 1000 #100
+    max_data_point_count = 20000
 
 
 
@@ -428,14 +424,9 @@ if __name__ == "__main__":
     goal_model = args.goal_model
     print_color(f"\n***** USING {goal_model} *****\n", "green")
     args.device = "cuda"
-
     
     if goal_model == "diffdef":
-        # ckpt = torch.load("/home/baothach/diffusion-point-cloud/weights/retraction_cutting/weights_03.31.2025-22:30/ckpt_0.000000_22000.pt")
-        if args.datasize == 10:
-            ckpt = torch.load(f"/home/baothach/diffusion-point-cloud/weights/retraction_cutting/datasize_{args.datasize}_seed_{args.model_seed}/ckpt_0.000000_20000.pt")
-        else:
-            ckpt = torch.load(f"/home/baothach/diffusion-point-cloud/weights/retraction_cutting/datasize_{args.datasize}/ckpt_0.000000_20000.pt")
+        ckpt = torch.load("/home/baothach/diffusion-point-cloud/weights/retraction_cutting/weights_03.31.2025-22:30/ckpt_0.000000_22000.pt")
         model = BaoFlowVAE(ckpt['args']).to(args.device)
         model.load_state_dict(ckpt['state_dict'])
         model.eval()
@@ -471,42 +462,10 @@ if __name__ == "__main__":
         pc = transform_point_cloud(pc, T_camera_to_object)  # Transform camera to object frame
         return pc, T_camera_to_object
     
-    max_percentage_passed = 0.0
-    collide_tool = False
-    percentage_passed = 0.0
-
-    # Image stuff
-    prepare_vis_cam = True
-    if prepare_vis_cam:
-        start_vis_cam = False 
-        # cam_record_frequency = 5    # record image every N frames
-
-        vis_frame_count = 0
-        img_count = 0
-        img_save_dir = os.path.join(main_path, f"retraction_tool/recordings", "test")
-        os.makedirs(img_save_dir, exist_ok=True)
-   
-        vis_cam_width = 1000
-        vis_cam_height = 1000
-        vis_cam_props = gymapi.CameraProperties()
-        vis_cam_props.width = vis_cam_width
-        vis_cam_props.height = vis_cam_height
-
-        # vis_cam_position = gymapi.Vec3(0.0, soft_pose.p.y - 0.1, 0.1)
-        # vis_cam_target = gymapi.Vec3(0.0, soft_pose.p.y, 0.01)   
-
-        # vis_cam_position = gymapi.Vec3(-0.05, soft_pose.p.y - 0.05, 0.15)
-        # vis_cam_target = gymapi.Vec3(0.0, soft_pose.p.y, 0.01)   
-
-        vis_cam_position = gymapi.Vec3(-0.0, soft_pose.p.y - 0.05, 0.15)
-        vis_cam_target = gymapi.Vec3(0.0, soft_pose.p.y, 0.01)   
-
-
-        vis_cam_handle = gym.create_camera_sensor(env_obj, vis_cam_props)
-        gym.set_camera_location(vis_cam_handle, env_obj, vis_cam_position, vis_cam_target)  
-
 
     while (not close_viewer) and (not all_done): 
+
+
 
         if not args.headless:
             close_viewer = gym.query_viewer_has_closed(viewer)  
@@ -539,8 +498,7 @@ if __name__ == "__main__":
                     tool_pc = get_partial_pointcloud_vectorized(*camera_tool_args)
                     init_pc = get_partial_pointcloud_vectorized(*camera_args) 
 
-                    num_pts = 512       
-                    num_points_deformernet = 1024                        
+                    num_pts = 512                               
 
                     init_pc = down_sampling(init_pc, num_pts)
                     context_pc = down_sampling(tool_pc, num_pts)
@@ -552,8 +510,9 @@ if __name__ == "__main__":
                         diffdef_shift = init_pc.mean(axis=0)
                         scale = (init_pc - diffdef_shift).flatten().std()                 
                         init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3)
-                        context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3)                         
+                        context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3) 
                         
+                        num_points_deformernet = 1024
                         z = torch.randn([1, ckpt['args'].latent_dim]).to(args.device) #* 0.1
                         x = model.sample(z, context_pc_tensor, init_pc_tensor, num_points_deformernet, flexibility=ckpt['args'].flexibility)
                         
@@ -567,41 +526,24 @@ if __name__ == "__main__":
                         first_goal_pc_object_frame = model(init_pc_tensor, context_pc_tensor).permute(0,2,1).squeeze().detach().cpu().numpy()*scale + diffdef_shift      
 
                     goal_pc_camera_frame = transform_point_cloud(first_goal_pc_object_frame, invert_4x4_transformation_matrix(T_camera_to_object))  # Transform object frame to camera frame
-                                            
-                    if visualization:                       
-                        pcd = pcd_ize(init_pc, color=[0,0,0])
-                        pcd_goal = pcd_ize(first_goal_pc_object_frame, color=[1,0,0])
-                        pcd_context = pcd_ize(context_pc, color=[0,1,0])
-                        coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
-                        open3d.visualization.draw_geometries([pcd, pcd_goal, pcd_context, coor])
+                    # pcd = pcd_ize(init_pc, color=[0,0,0])
+                    # pcd_goal = pcd_ize(first_goal_pc_object_frame, color=[1,0,0])
+                    # pcd_context = pcd_ize(context_pc, color=[0,1,0])
+                    # open3d.visualization.draw_geometries([pcd, pcd_goal, pcd_context])
 
                     first_time = False
 
                     # Evaluation with plane
                     constrain_plane = np.array([0, 1, 0, -soft_pose.p.y])
                     x_range=[-0.3,0.3]
-                    y_range=[soft_pose.p.y-0.05, soft_pose.p.y+0.05]
+                    y_range=[soft_pose.p.y-0.2, soft_pose.p.y+0.2]
                     z_range=0.2
                     num_pts=1000
-                    vis_plane = visualization
+                    vis_plane = True
 
-                    max_percentage_passed = check_plane(constrain_plane, get_object_particle_state(gym, sim), 
+                    percentage_passed = check_plane(constrain_plane, get_object_particle_state(gym, sim), 
                                                     vis=vis_plane, 
                                                     x_range=x_range, y_range=y_range, z_range=z_range)
-                    
-                    if prepare_vis_cam:
-                        radius = 5  #5  #2 #1        
-                        # color in BGR format
-                        color = (0, 0, 255)
-                        thickness = -1  #-1  #2 
-                        
-                        goal_pc_world_frame =  transform_point_cloud(goal_pc_camera_frame, invert_4x4_transformation_matrix(camera_view_matrix.T))
-                        goal_pc_world_frame = down_sampling(goal_pc_world_frame, 200)
-                        projected_pixels = compute_pointcloud_pixel_coordinates_on_image(gym, sim, env_obj, 
-                                                                                         goal_pc_world_frame, 
-                                                                                         vis_cam_handle, vis_cam_props)
-                        prepare_vis_cam = False  
-                        start_vis_cam = True                  
 
 
                 state = "generate preshape"
@@ -616,17 +558,6 @@ if __name__ == "__main__":
                 # pc_ros_msg = fix_object_frame(pc_ros_msg)
                 saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
 
-        if start_vis_cam:   
-            if vis_frame_count % 5 == 0:
-                # output_file = os.path.join(img_save_dir, f"cam_view_{img_count}.png")
-                img_path = os.path.join(img_save_dir, f'img{img_count:03}.png')
-                project_pointcloud_on_image(gym, sim, env_obj, 
-                                            vis_cam_handle, vis_cam_props, projected_pixels, 
-                                            img_save_dir=img_path, color=color, radius=radius, thickness=thickness)
-                img_count += 1
-                
-            vis_frame_count += 1 
-
 
         if state == "generate preshape":                   
             rospy.loginfo("**Current state: " + state)
@@ -635,6 +566,10 @@ if __name__ == "__main__":
             target_pose = [-cartesian_goal.position.x, -cartesian_goal.position.y, cartesian_goal.position.z-ROBOT_Z_OFFSET,
                             0, 0.707107, 0.707107, 0]
 
+            # highest_point_idx = np.argmax(saved_object_state[:,2])
+            # target_pose = [-saved_object_state[highest_point_idx,0], -saved_object_state[highest_point_idx,1], 
+            #                saved_object_state[highest_point_idx,2]-ROBOT_Z_OFFSET-0.02,
+            #                 0, 0.707107, 0.707107, 0]
 
             mtp_behavior = MoveToPose(target_pose, robot, sim_params.dt, 2)
             if mtp_behavior.is_complete_failure():
@@ -698,6 +633,38 @@ if __name__ == "__main__":
             rospy.loginfo("**Current state: " + state) 
 
             with torch.no_grad():   
+
+                # num_pts = 512  
+
+                # if action_count == 0:                                 
+
+                #     init_pc = down_sampling(init_pc, num_pts)
+                #     context_pc = down_sampling(tool_pc, num_pts)
+
+                #     init_pc, T_camera_to_object = transform_pc_world_to_object_frame(init_pc, camera_view_matrix, T_camera_to_object=None)
+                #     context_pc, _ = transform_pc_world_to_object_frame(context_pc, camera_view_matrix, T_camera_to_object)
+
+                #     if goal_model == "diffdef":
+                #         diffdef_shift = init_pc.mean(axis=0)
+                #         scale = (init_pc - diffdef_shift).flatten().std()                 
+                #         init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3)
+                #         context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).float().to(args.device)  # shape (1, num_pts, 3) 
+                        
+                #         num_points_deformernet = 1024
+                #         z = torch.randn([1, ckpt['args'].latent_dim]).to(args.device) * 0.1
+                #         x = model.sample(z, context_pc_tensor, init_pc_tensor, num_points_deformernet, flexibility=ckpt['args'].flexibility)
+                        
+                #         first_goal_pc_object_frame = x[0].detach().cpu().numpy()*scale + diffdef_shift
+                        
+                #     elif goal_model == "defgoalnet":
+                #         diffdef_shift = init_pc.mean(axis=0)
+                #         scale = (init_pc - diffdef_shift).flatten().std()                 
+                #         init_pc_tensor = torch.from_numpy((init_pc - diffdef_shift) / scale).unsq                                                                                                                                                                                                                     ueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
+                #         context_pc_tensor = torch.from_numpy((context_pc - diffdef_shift) / scale).unsqueeze(0).permute(0,2,1).float().to(args.device)  # shape (1, 3, num_pts)
+                #         first_goal_pc_object_frame = model(init_pc_tensor, context_pc_tensor).permute(0,2,1).squeeze().detach().cpu().numpy()*scale + diffdef_shift      
+
+                #     goal_pc_camera_frame = transform_point_cloud(first_goal_pc_object_frame, invert_4x4_transformation_matrix(T_camera_to_object))  # Transform object frame to camera frame
+
                 goal_pc_object_frame = transform_point_cloud(goal_pc_camera_frame, T_camera_to_object)  # Transform camera frame to object frame
                 goal_pc_tensor = torch.from_numpy(goal_pc_object_frame).unsqueeze(0).float().permute(0,2,1).to(args.device)  # shape (1, num_pts, 3)
 
@@ -747,9 +714,8 @@ if __name__ == "__main__":
                 pcd_context = pcd_ize(context_pc, color=[0,1,0])
                 pcd_goal = pcd_ize(goal_pc_object_frame, color=[1,0,0])
 
-                if visualization:
-                    open3d.visualization.draw_geometries([pcd, pcd_goal, \
-                                                        mani_point_sphere, coor, pcd_context])
+                open3d.visualization.draw_geometries([pcd, pcd_goal, \
+                                                    mani_point_sphere, coor, pcd_context])
 
             tvc_behavior = TaskVelocityControl2([*desired_pos, desired_rot], robot, sim_params.dt, 3, vel_limits=vel_limits, use_euler_target=False, \
                                                 pos_threshold = 2e-3, ori_threshold=5e-2)
@@ -769,12 +735,6 @@ if __name__ == "__main__":
 
 
             contacts = [contact[4] for contact in gym.get_soft_contacts(sim)]
-
-            collide_tool = 12 in contacts
-            if collide_tool:
-                rospy.logerr("Tissue collided with surgical tool")
-
-
             if not(9 in contacts or 10 in contacts):  # lose contact w 1 robot
                 rospy.logerr("Lost contact with robot")
                 
@@ -790,6 +750,15 @@ if __name__ == "__main__":
                 else:   
 
                     rospy.loginfo("Succesfully executed moveit arm plan. Let's record point cloud!!")  
+                    # partial_goal_pc = get_partial_pointcloud_vectorized(*camera_args)  
+                    # print("partial_goal_pc shape:", partial_goal_pc.shape)
+                    # temp_pcd = pcd_ize(partial_goal_pc, vis=False)
+                    # coor = open3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1) 
+                    # open3d.visualization.draw_geometries([temp_pcd, coor])
+                    # # full_pc = get_object_particle_state(gym, sim)
+
+                    # # recorded_goal_pcs.append((full_pc, partial_goal_pc))
+                    # recorded_goal_pcs.append(partial_goal_pc)
 
                     if visualization:
                         output_file = f"/home/baothach/Downloads/test_cam_views_{angle_idx}.png"           
@@ -807,8 +776,6 @@ if __name__ == "__main__":
                     percentage_passed = check_plane(constrain_plane, get_object_particle_state(gym, sim), 
                                                     vis=vis_plane, 
                                                     x_range=x_range, y_range=y_range, z_range=z_range)
-                    
-                    max_percentage_passed = max(max_percentage_passed, percentage_passed)
 
         if state == "reset":   
             rospy.loginfo("**Current state: " + state)
@@ -824,22 +791,20 @@ if __name__ == "__main__":
  
         
 
-        if  data_point_count >= max_data_point_count:                    
-            all_done = True 
+        # if  data_point_count >= max_data_point_count:                    
+        #     all_done = True 
 
-        # if max_percentage_passed >= 99.0 or action_count > max_action_count or collide_tool:
-        #     data = {"collide_tool": collide_tool,
-        #             "max_percentage_passed": max_percentage_passed,
-        #             "most_recent_percentage_passed": percentage_passed,
-        #             "final_action_count": action_count,
-        #             "area_idx": area_idx,}
+        # if angle_idx >= max_sample_count:    
+
+        #     data = {"partial_goal_pcs": recorded_goal_pcs,
+        #             "partial_init_pc": pc_init, 
+        #             "tool_pc": tool_pc,
+        #             "area_idx": area_idx}
         #     write_pickle_data(data, os.path.join(data_recording_path, f"sample_{data_point_count}.pickle"))
 
-        #     print_color(f"\n\nFINAL RESULT:\ncollide_tool: {collide_tool}.\nmax_percentage_passed: {max_percentage_passed}.\n\n", color="green")
-
             
-        #     all_done = True
-        #     rospy.logerr("Simulation succesfully completed. Data saved!")
+            # all_done = True
+            # rospy.logerr("Simulation succesfully completed. Data saved!")
 
 
         # step rendering

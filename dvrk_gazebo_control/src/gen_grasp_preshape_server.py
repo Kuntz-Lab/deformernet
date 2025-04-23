@@ -327,8 +327,8 @@ class GenGraspPreshape():
             # w_prime = np.random.uniform(low = -obj.width/2*0.8 , high = obj.width/2*0.8)    # single physical dvrk 
             # h_prime = np.random.uniform(low = obj.height/2*0.2 , high = obj.height/2*0.8) 
 
-            w_prime = np.random.uniform(low = -obj.width/2*0.5 , high = obj.width/2*0.5)    # single retraction tool 
-            h_prime = np.random.uniform(low = -obj.width/2*0.5 , high = obj.width/2*0.5) 
+            # w_prime = np.random.uniform(low = -obj.width/2*0.5 , high = obj.width/2*0.5)    # single retraction tool 
+            # h_prime = np.random.uniform(low = -obj.width/2*0.5 , high = obj.width/2*0.5) 
 
             # w_prime = np.random.uniform(low = -obj.width/2*0.8 , high = obj.width/2*0.8) # chicken breast
             # h_prime = np.random.uniform(low = obj.height/2*0.7 , high = obj.height/2*0.85)
@@ -345,8 +345,8 @@ class GenGraspPreshape():
             # w_prime = obj.width/2 * 0.0   # retraction tool task, data collection
             # h_prime = obj.height/2 * 0.0 
 
-            # w_prime = obj.width/2 * 0.0   # object packaging ball
-            # h_prime = obj.height/2 * 0.85 
+            w_prime = obj.width/2 * 0.0   # object packaging ball
+            h_prime = obj.height/2 * 0.85 
 
             # w_prime = np.random.uniform(low = -obj.width/2*0.7 , high = obj.width/2*0.7) # evaluate bimanual hemis
             # h_prime = np.random.uniform(low = obj.height/2*0.6 , high = obj.height/2*0.7)  

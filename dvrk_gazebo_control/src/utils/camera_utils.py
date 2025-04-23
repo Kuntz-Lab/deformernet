@@ -6,6 +6,10 @@ import torch
 import torchvision
 from torchvision.utils import make_grid
 from isaacgym import gymapi
+from PIL import Image
+import cv2
+import os
+
 
 def compute_pointcloud(D_i, S_i, V_inv, P, w, h, min_z, segmentationId_dict, object_name="deformable", device="cuda"):
     '''
@@ -421,3 +425,60 @@ def add_frames(img_dir, source_frame, num_new_frames):
     for frame in range(source_frame+1, source_frame+num_new_frames+1):
         dst = os.path.join(img_dir, f'img{frame:03}.png')
         shutil.copy(src, dst)   
+
+
+def compute_pointcloud_pixel_coordinates_on_image(gym, sim, env, goal_pc, vis_cam_handle, vis_cam_props):
+    
+    """
+    Compute pixel coordinates of points in the point cloud on the image plane of the camera (3D to 2D projection).
+
+    Return pixels: shape (N, 2) where N is the number of points in the point cloud.
+
+    The first column is the y coordinate and the second column is the x coordinate.
+    The pixel coordinates are in the range [0, width] and [0, height] respectively.
+    """
+
+    vis_cam_width = vis_cam_props.width
+    vis_cam_height = vis_cam_props.height
+
+    u_s =[]
+    v_s = []
+    for point in goal_pc:
+        point = list(point) + [1]
+
+        point = np.expand_dims(np.array(point), axis=0)
+
+        point_cam_frame = point * np.matrix(gym.get_camera_view_matrix(sim, env, vis_cam_handle))
+        u_s.append(1/2 * point_cam_frame[0, 0]/point_cam_frame[0, 2])
+        v_s.append(1/2 * point_cam_frame[0, 1]/point_cam_frame[0, 2])      
+          
+    centerU = vis_cam_width/2
+    centerV = vis_cam_height/2    
+    y_s = (centerU - np.array(u_s)*vis_cam_width).astype(int)
+    x_s = (centerV + np.array(v_s)*vis_cam_height).astype(int)    
+
+    projected_pixels = np.column_stack((np.array(y_s), np.array(x_s)))
+
+    return projected_pixels
+
+def project_pointcloud_on_image(gym, sim, env, 
+                                vis_cam_handle, vis_cam_props, projected_pixels,
+                                img_save_dir=None, color=(255, 0, 0), radius=5, thickness=-1):
+    vis_cam_width = vis_cam_props.width
+    vis_cam_height = vis_cam_props.height
+
+    gym.render_all_camera_sensors(sim)
+    im = gym.get_camera_image(sim, env, vis_cam_handle, gymapi.IMAGE_COLOR).reshape((vis_cam_height,vis_cam_width,4))[:,:,:3]
+    image = im.astype(np.uint8)
+
+    im = Image.fromarray(im)
+    
+    for point in projected_pixels:
+        image = cv2.circle(image, tuple(point), radius, color, thickness)        
+
+    if img_save_dir is not None:                           
+        cv2.imwrite(img_save_dir, image)
+        
+
+
+

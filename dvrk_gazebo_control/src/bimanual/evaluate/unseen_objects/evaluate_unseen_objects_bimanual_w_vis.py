@@ -730,7 +730,7 @@ if __name__ == "__main__":
                 for point in points:
                     image = cv2.circle(image, tuple(point), radius, color, thickness)        
 
-                path =  os.path.join(save_path, f'img{num_image:03}.png')                  
+                path =  os.path.join(save_path, f'img{num_image:03}.png')                    
                 cv2.imwrite(path, image)
 
                 num_image += 1        

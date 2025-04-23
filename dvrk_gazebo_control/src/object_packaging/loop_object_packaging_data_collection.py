@@ -10,7 +10,7 @@ os.chdir(pkg_path)
 headless = True
 start_time = timeit.default_timer()
 
-prim_names = ["box"] #["box", "cylinder", "hemis"]
+prim_names = ["box", "cylinder"] #["box", "cylinder", "hemis"]
 # stiffnesses = ["5k"]  #["1k", "5k", "10k"] 
 
 stiffness = "5k"
