@@ -198,3 +198,13 @@ def print_lists_with_formatting(lists, decimals, prefix_str):
             print("]", end=' ')
             
     print("\n")
+    
+    
+def seed_all(seed):
+    import torch
+    import numpy as np    
+    import random
+    
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)

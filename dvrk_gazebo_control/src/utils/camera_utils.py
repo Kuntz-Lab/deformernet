@@ -463,18 +463,25 @@ def compute_pointcloud_pixel_coordinates_on_image(gym, sim, env, goal_pc, vis_ca
 
 def project_pointcloud_on_image(gym, sim, env, 
                                 vis_cam_handle, vis_cam_props, projected_pixels,
-                                img_save_dir=None, color=(255, 0, 0), radius=5, thickness=-1):
+                                img_save_dir=None, color=(255, 0, 0), radius=5, thickness=-1, overlay_alpha=None):
     vis_cam_width = vis_cam_props.width
     vis_cam_height = vis_cam_props.height
 
     gym.render_all_camera_sensors(sim)
     im = gym.get_camera_image(sim, env, vis_cam_handle, gymapi.IMAGE_COLOR).reshape((vis_cam_height,vis_cam_width,4))[:,:,:3]
     image = im.astype(np.uint8)
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-    im = Image.fromarray(im)
-    
+    if overlay_alpha is not None:
+        overlay = image.copy()
+   
     for point in projected_pixels:
-        image = cv2.circle(image, tuple(point), radius, color, thickness)        
+        image = cv2.circle(image, tuple(point), radius, color, thickness)     
+
+    if overlay_alpha is not None:
+        # Alpha blend overlay onto original image
+        # Transparency factor (0.0 fully transparent, 1.0 fully opaque)
+        image = cv2.addWeighted(overlay, overlay_alpha, image, 1 - overlay_alpha, 0)        
 
     if img_save_dir is not None:                           
         cv2.imwrite(img_save_dir, image)

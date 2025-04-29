@@ -108,7 +108,7 @@ def visualize_plane(plane_eq, x_range=[-1,0], y_range=[-1,0], z_range=0.2,num_pt
     plane = []
     for i in range(num_pts):
         x = np.random.uniform(x_range[0], x_range[1])
-        z = np.random.uniform(-0.05, z_range)
+        z = np.random.uniform(-0.0, z_range)
         y = -(plane_eq[0]*x + plane_eq[2]*z + plane_eq[3])/plane_eq[1]
         if y_range[0] < y < y_range[1]:
             plane.append([x, y, z])     

@@ -392,7 +392,7 @@ if __name__ == "__main__":
     # max_sample_count = 1    #2
 
 
-    max_data_point_count = 1000 #100
+    max_data_point_count = 100 #100
 
 
 
@@ -474,36 +474,6 @@ if __name__ == "__main__":
     max_percentage_passed = 0.0
     collide_tool = False
     percentage_passed = 0.0
-
-    # Image stuff
-    prepare_vis_cam = True
-    if prepare_vis_cam:
-        start_vis_cam = False 
-        # cam_record_frequency = 5    # record image every N frames
-
-        vis_frame_count = 0
-        img_count = 0
-        img_save_dir = os.path.join(main_path, f"retraction_tool/recordings", "test")
-        os.makedirs(img_save_dir, exist_ok=True)
-   
-        vis_cam_width = 1000
-        vis_cam_height = 1000
-        vis_cam_props = gymapi.CameraProperties()
-        vis_cam_props.width = vis_cam_width
-        vis_cam_props.height = vis_cam_height
-
-        # vis_cam_position = gymapi.Vec3(0.0, soft_pose.p.y - 0.1, 0.1)
-        # vis_cam_target = gymapi.Vec3(0.0, soft_pose.p.y, 0.01)   
-
-        # vis_cam_position = gymapi.Vec3(-0.05, soft_pose.p.y - 0.05, 0.15)
-        # vis_cam_target = gymapi.Vec3(0.0, soft_pose.p.y, 0.01)   
-
-        vis_cam_position = gymapi.Vec3(-0.0, soft_pose.p.y - 0.05, 0.15)
-        vis_cam_target = gymapi.Vec3(0.0, soft_pose.p.y, 0.01)   
-
-
-        vis_cam_handle = gym.create_camera_sensor(env_obj, vis_cam_props)
-        gym.set_camera_location(vis_cam_handle, env_obj, vis_cam_position, vis_cam_target)  
 
 
     while (not close_viewer) and (not all_done): 
@@ -587,22 +557,7 @@ if __name__ == "__main__":
 
                     max_percentage_passed = check_plane(constrain_plane, get_object_particle_state(gym, sim), 
                                                     vis=vis_plane, 
-                                                    x_range=x_range, y_range=y_range, z_range=z_range)
-                    
-                    if prepare_vis_cam:
-                        radius = 5  #5  #2 #1        
-                        # color in BGR format
-                        color = (0, 0, 255)
-                        thickness = -1  #-1  #2 
-                        
-                        goal_pc_world_frame =  transform_point_cloud(goal_pc_camera_frame, invert_4x4_transformation_matrix(camera_view_matrix.T))
-                        goal_pc_world_frame = down_sampling(goal_pc_world_frame, 200)
-                        projected_pixels = compute_pointcloud_pixel_coordinates_on_image(gym, sim, env_obj, 
-                                                                                         goal_pc_world_frame, 
-                                                                                         vis_cam_handle, vis_cam_props)
-                        prepare_vis_cam = False  
-                        start_vis_cam = True                  
-
+                                                    x_range=x_range, y_range=y_range, z_range=z_range)                    
 
                 state = "generate preshape"
                 
@@ -615,17 +570,6 @@ if __name__ == "__main__":
                 pc_ros_msg = dc_client.seg_obj_from_file_client(pcd_file_path = "/home/baothach/shape_servo_data/multi_grasps/1.pcd", align_obj_frame = False).obj
                 # pc_ros_msg = fix_object_frame(pc_ros_msg)
                 saved_object_state = deepcopy(gymtorch.wrap_tensor(gym.acquire_particle_state_tensor(sim))) 
-
-        if start_vis_cam:   
-            if vis_frame_count % 5 == 0:
-                # output_file = os.path.join(img_save_dir, f"cam_view_{img_count}.png")
-                img_path = os.path.join(img_save_dir, f'img{img_count:03}.png')
-                project_pointcloud_on_image(gym, sim, env_obj, 
-                                            vis_cam_handle, vis_cam_props, projected_pixels, 
-                                            img_save_dir=img_path, color=color, radius=radius, thickness=thickness)
-                img_count += 1
-                
-            vis_frame_count += 1 
 
 
         if state == "generate preshape":                   
